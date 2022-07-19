@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 #[clap(
     about = "This takes raw Notes from Nature classifications and creates a \
             reconciliation of the classifications for a particular workflow. \
-            That is, it reduces N classifications per subject to the \"best\" \
+            That is, it reduces N classifications per subject to its \"best\" \
             values."
 )]
 struct Cli {
@@ -36,114 +36,100 @@ fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
 
     let mut reader = csv::Reader::from_path(args.zooniverse)?;
 
-    {
-        let headers = reader.headers()?;
-        println!("{:?}\n", headers);
-    }
-
-    for raw in reader.deserialize() {
-        let row: Row = raw?;
-
-        // TODO Check for other required fields
-        if !row.contains_key("annotations") {
-            panic!("CSV file does not contain an \"annotations\" field");
-        }
+    for raw_row in reader.deserialize() {
+        let row: Row = raw_row?;
 
         let annotations: Value = serde_json::from_str(&row["annotations"])?;
         match annotations {
-            Value::Array(vec) => {
-                for val in vec {
-                    println!("{:?}\n", val);
-                    flatten_annotation(&val, String::from(""));
+            Value::Array(tasks_vector) => {
+                for tasks in tasks_vector {
+                    flatten_tasks(&tasks, String::from(""));
                 }
             }
             _ => {
-                println!("other")
+                panic!("No annotations in this row {:?}", row);
             }
         }
-        break;
     }
 
     Ok(())
 }
 
-fn flatten_annotation(annotation: &Value, task_id: String) {
-    let task_id = get_task_id(annotation, task_id);
+fn flatten_tasks(task: &Value, task_id: String) {
+    let task_id = get_task_id(task, task_id);
 
-    match annotation {
-        Value::Object(obj)
-            if obj.contains_key("value")
-                && obj["value"].is_array()
-                && obj["value"][0].is_string() =>
-        {
-            list_annotation(annotation, task_id);
+    if let Value::Object(obj) = task {
+        if obj.contains_key("value") && obj["value"].is_array() && obj["value"][0].is_string() {
+            add_list_of_values(task, task_id);
+        } else if obj.contains_key("value") && obj["value"].is_array() {
+            nested_tasks(task, task_id);
+        } else if obj.contains_key("tool_label") && obj.contains_key("width") {
+            add_box_values(task, task_id);
+        } else if obj.contains_key("tool_label") && obj.contains_key("x1") {
+            add_length_values(task, task_id);
+        } else if obj.contains_key("tool_label") && obj.contains_key("x") {
+            add_point_values(task, task_id);
+        } else if obj.contains_key("tool_label") && obj.contains_key("details") {
+            add_values_from_workflow(task, task_id);
+        } else if obj.contains_key("select_label") {
+            add_selected_value(task, task_id);
+        } else if obj.contains_key("task_label") {
+            add_text_value(task, task_id);
         }
-        Value::Object(obj) if obj.contains_key("value") && obj["value"].is_array() => {
-            subtask_annotation(annotation, task_id);
-        }
-        Value::Object(obj) if obj.contains_key("tool_label") && obj.contains_key("width") => {
-            box_annotation(annotation, task_id);
-        }
-        Value::Object(obj) if obj.contains_key("tool_label") && obj.contains_key("x1") => {
-            length_annotation(annotation, task_id);
-        }
-        Value::Object(obj) if obj.contains_key("tool_label") && obj.contains_key("x") => {
-            point_annotation(annotation, task_id);
-        }
-        Value::Object(obj) if obj.contains_key("select_label") => {
-            select_label_annotation(annotation, task_id)
-        }
-        Value::Object(obj) if obj.contains_key("task_label") => {
-            task_label_annotation(annotation, task_id)
-        }
-        _ => panic!("Unkown field type in: {:?}", annotation),
-    }
+    } else {
+        panic!("Unkown field type in: {:?}", task);
+    };
 }
 
-fn subtask_annotation(annotation: &Value, task_id: String) {
-    let mut task_id = get_task_id(annotation, task_id);
-    match &annotation["value"] {
-        Value::Array(tasks) => {
-            for subtask in tasks {
+fn nested_tasks(task: &Value, task_id: String) {
+    let mut task_id = get_task_id(task, task_id);
+    match &task["value"] {
+        Value::Array(subtasks) => {
+            for subtask in subtasks {
                 task_id = get_task_id(subtask, task_id);
-                flatten_annotation(&subtask, task_id.clone());
+                flatten_tasks(&subtask, task_id.clone());
             }
         }
-        _ => panic!("Nope"),
+        _ => panic!("Expected a list: {:?}", task),
     }
 }
 
-fn list_annotation(annotation: &Value, task_id: String) {
-    println!("{} list_annotation {:?}\n", task_id, annotation);
+fn add_list_of_values(task: &Value, task_id: String) {
+    println!("{} add_list_of_values {:?}\n", task_id, task);
 }
 
-fn select_label_annotation(annotation: &Value, task_id: String) {
-    println!("{} select_label_annotation {:?}\n", task_id, annotation);
+fn add_selected_value(task: &Value, task_id: String) {
+    println!("{} add_selected_value {:?}\n", task_id, task);
 }
 
-fn task_label_annotation(annotation: &Value, task_id: String) {
-    println!("{} task_label_annotation {:?}\n", task_id, annotation);
+fn add_text_value(task: &Value, task_id: String) {
+    println!("{} add_text_value {:?}\n", task_id, task);
 }
 
-fn box_annotation(annotation: &Value, task_id: String) {
-    println!("{} box_annotation {:?}\n", task_id, annotation);
+fn add_box_values(task: &Value, task_id: String) {
+    println!("{} add_box_values {:?}\n", task_id, task);
 }
 
-fn length_annotation(annotation: &Value, task_id: String) {
-    println!("{} length_annotation {:?}\n", task_id, annotation);
+fn add_length_values(task: &Value, task_id: String) {
+    println!("{} add_length_values {:?}\n", task_id, task);
 }
 
-fn point_annotation(annotation: &Value, task_id: String) {
-    println!("{} point_annotation {:?}\n", task_id, annotation);
+fn add_point_values(task: &Value, task_id: String) {
+    println!("{} add_point_values {:?}\n", task_id, task);
 }
 
-fn get_task_id(annotation: &Value, task_id: String) -> String {
-    match annotation {
-        Value::Object(obj) if obj.contains_key("task") => {
-            let quoted = obj["task"].to_string();
-            let end = quoted.len() - 1;
-            quoted[1..end].to_string()
-        }
+fn add_values_from_workflow(task: &Value, task_id: String) {
+    println!("{} add_values_from_workflow {:?}\n", task_id, task);
+}
+
+fn get_task_id(task: &Value, task_id: String) -> String {
+    match task {
+        Value::Object(obj) if obj.contains_key("task") => strip_quotes(obj["task"].to_string()),
         _ => task_id,
     }
+}
+
+fn strip_quotes(quoted: String) -> String {
+    let end = quoted.len() - 1;
+    quoted[1..end].to_string()
 }
