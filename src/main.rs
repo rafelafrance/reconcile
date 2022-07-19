@@ -1,8 +1,8 @@
 // use anyhow::Context;
 // use csv::Error;
 use clap::Parser;
-use serde_json;
-use std::collections::HashMap;
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 #[derive(Parser)]
 #[clap(
@@ -29,7 +29,7 @@ struct Cli {
     summary: Option<std::path::PathBuf>,
 }
 
-type Row = HashMap<String, String>;
+type Row = BTreeMap<String, String>;
 
 fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
@@ -38,47 +38,112 @@ fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
 
     {
         let headers = reader.headers()?;
-        println!("{:?}", headers);
+        println!("{:?}\n", headers);
     }
-
-    // for anno in json.loads(raw_row["annotations"]):
-    //     flatten_annotation(anno, row, workflow_strings)
-
-    // def flatten_annotation(anno, row, workflow_strings, task_id=""):
-    //     """Flatten one annotation recursively."""
-    //     task_id = anno.get("task", task_id)
-
-    //     match anno:
-    //         case {"value": [str(), *__], **___}:
-    //             list_annotation(anno, row, task_id)
-    //         case {"value": list(), **__}:
-    //             subtask_annotation(anno, row, workflow_strings, task_id)
-    //         case {"select_label": _, **__}:
-    //             select_label_annotation(anno, row, task_id)
-    //         case {"task_label": _, **__}:
-    //             task_label_annotation(anno, row, task_id)
-    //         case {"tool_label": _, "width": __, **___}:
-    //             box_annotation(anno, row, task_id)
-    //         case {"tool_label": _, "x1": __, **___}:
-    //             length_annotation(anno, row, task_id)
-    //         case {"tool_label": _, "x": __, **___}:
-    //             point_annotation(anno, row, task_id)
-    //         case {"tool_label": _, "details": __, **___}:
-    //             workflow_annotation(anno, row, workflow_strings, task_id)
-    //         case _:
-    //             print(f"Annotation type not found: {anno}")
 
     for raw in reader.deserialize() {
         let row: Row = raw?;
-        let annos = serde_json::from_str(&row["annotations"])?;
-        // for anno in annos {
-        //     println!("{}", anno);
-        // }
-        //     Value::Array(_) => println!("Array"),
-        //     _ => println!("Other"),
-        // }
-        println!("annotations = {}", row["annotations"]);
+
+        // TODO Check for other required fields
+        if !row.contains_key("annotations") {
+            panic!("CSV file does not contain an \"annotations\" field");
+        }
+
+        let annotations: Value = serde_json::from_str(&row["annotations"])?;
+        match annotations {
+            Value::Array(vec) => {
+                for val in vec {
+                    println!("{:?}\n", val);
+                    flatten_annotation(&val, String::from(""));
+                }
+            }
+            _ => {
+                println!("other")
+            }
+        }
+        break;
     }
 
     Ok(())
+}
+
+fn flatten_annotation(annotation: &Value, task_id: String) {
+    let task_id = get_task_id(annotation, task_id);
+
+    match annotation {
+        Value::Object(obj)
+            if obj.contains_key("value")
+                && obj["value"].is_array()
+                && obj["value"][0].is_string() =>
+        {
+            list_annotation(annotation, task_id);
+        }
+        Value::Object(obj) if obj.contains_key("value") && obj["value"].is_array() => {
+            subtask_annotation(annotation, task_id);
+        }
+        Value::Object(obj) if obj.contains_key("tool_label") && obj.contains_key("width") => {
+            box_annotation(annotation, task_id);
+        }
+        Value::Object(obj) if obj.contains_key("tool_label") && obj.contains_key("x1") => {
+            length_annotation(annotation, task_id);
+        }
+        Value::Object(obj) if obj.contains_key("tool_label") && obj.contains_key("x") => {
+            point_annotation(annotation, task_id);
+        }
+        Value::Object(obj) if obj.contains_key("select_label") => {
+            select_label_annotation(annotation, task_id)
+        }
+        Value::Object(obj) if obj.contains_key("task_label") => {
+            task_label_annotation(annotation, task_id)
+        }
+        _ => panic!("Unkown field type in: {:?}", annotation),
+    }
+}
+
+fn subtask_annotation(annotation: &Value, task_id: String) {
+    let mut task_id = get_task_id(annotation, task_id);
+    match &annotation["value"] {
+        Value::Array(tasks) => {
+            for subtask in tasks {
+                task_id = get_task_id(subtask, task_id);
+                flatten_annotation(&subtask, task_id.clone());
+            }
+        }
+        _ => panic!("Nope"),
+    }
+}
+
+fn list_annotation(annotation: &Value, task_id: String) {
+    println!("{} list_annotation {:?}\n", task_id, annotation);
+}
+
+fn select_label_annotation(annotation: &Value, task_id: String) {
+    println!("{} select_label_annotation {:?}\n", task_id, annotation);
+}
+
+fn task_label_annotation(annotation: &Value, task_id: String) {
+    println!("{} task_label_annotation {:?}\n", task_id, annotation);
+}
+
+fn box_annotation(annotation: &Value, task_id: String) {
+    println!("{} box_annotation {:?}\n", task_id, annotation);
+}
+
+fn length_annotation(annotation: &Value, task_id: String) {
+    println!("{} length_annotation {:?}\n", task_id, annotation);
+}
+
+fn point_annotation(annotation: &Value, task_id: String) {
+    println!("{} point_annotation {:?}\n", task_id, annotation);
+}
+
+fn get_task_id(annotation: &Value, task_id: String) -> String {
+    match annotation {
+        Value::Object(obj) if obj.contains_key("task") => {
+            let quoted = obj["task"].to_string();
+            let end = quoted.len() - 1;
+            quoted[1..end].to_string()
+        }
+        _ => task_id,
+    }
 }
