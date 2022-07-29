@@ -1,7 +1,46 @@
+// Parse the format given to us by Zooniverse in a classifications export
+
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 type Row = std::collections::BTreeMap<String, String>;
 
+// -------------------------------------------------------------------------------
+// Field types are based upon how they get reconciled not on the data they contain
+
+#[derive(Deserialize)]
+pub struct BoxField {
+    left: f32,
+    top: f32,
+    right: f32,
+    bottom: f32,
+}
+
+#[derive(Deserialize)]
+pub struct LengthField {
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+}
+
+#[derive(Deserialize)]
+pub struct PointField {
+    x: f32,
+    y: f32,
+}
+
+#[derive(Deserialize)]
+pub struct SelectField {
+    value: String,
+}
+
+#[derive(Deserialize)]
+pub struct TextField {
+    value: String,
+}
+
+// -------------------------------------------------------------------------------
 pub fn parse(path: &std::path::Path) -> anyhow::Result<(), Box<dyn std::error::Error>> {
     let mut reader = csv::Reader::from_path(path)?;
 
@@ -15,9 +54,7 @@ pub fn parse(path: &std::path::Path) -> anyhow::Result<(), Box<dyn std::error::E
                     flatten_tasks(&tasks, String::from(""));
                 }
             }
-            _ => {
-                panic!("No annotations in this row {:?}", row);
-            }
+            _ => panic!("No annotations in this row {:?}", row)
         }
     }
 
@@ -46,7 +83,7 @@ fn flatten_tasks(task: &Value, task_id: String) {
             add_values_from_workflow(task, task_id);
         }
     } else {
-        panic!("Unkown field type in: {:?}", task);
+        panic!("Unkown field type in: {:?}", task)
     };
 }
 
@@ -68,6 +105,7 @@ fn add_list_of_values(task: &Value, task_id: String) {
 }
 
 fn add_selected_value(task: &Value, task_id: String) {
+    let select: SelectField = serde_json::from_value(task).unwrap();
     println!("{} add_selected_value {:?}\n", task_id, task);
 }
 
