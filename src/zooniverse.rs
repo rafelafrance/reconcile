@@ -6,7 +6,6 @@ use serde_json::Value;
 type CsvRow = std::collections::HashMap<String, String>;
 
 // ---------------------------------------------------------------------------------
-
 #[derive(Deserialize)]
 struct BoxField {
     tool_label: String,
@@ -153,129 +152,97 @@ fn extract_annotations(
     Ok(())
 }
 
-fn flatten_tasks(task: &Value, annotation_id: String, row: &mut UnreconciledRow) {
-    let annotation_id = get_annotation_id(task, annotation_id);
+fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
+    let task_id = get_task_id(task, task_id);
 
     if let Value::Object(obj) = task {
         if obj.contains_key("value") && obj["value"].is_array() && obj["value"][0].is_string() {
-            annotation_list(task, annotation_id, row);
+            let mut field: ListField = serde_json::from_value(task.clone()).unwrap();
+            field.values.sort();
+            row.push(UnreconciledCell {
+                header: get_key(&field.task_label, task, task_id),
+                cell: UnreconciledField::List {
+                    values: field.values,
+                },
+            });
         } else if obj.contains_key("value") && obj["value"].is_array() {
-            nested_annotations(task, annotation_id, row);
+            let mut task_id = get_task_id(task, task_id);
+            match &task["value"] {
+                Value::Array(subtasks) => {
+                    for subtask in subtasks {
+                        task_id = get_task_id(subtask, task_id);
+                        flatten_tasks(subtask, task_id.clone(), row);
+                    }
+                }
+                _ => panic!("Expected a list: {:?}", task),
+            }
         } else if obj.contains_key("select_label") {
-            selected_annotation(task, annotation_id, row);
+            let field: SelectField = serde_json::from_value(task.clone()).unwrap();
+            let value: String = match field.value {
+                Some(v) => v.clone(),
+                None => String::from(""),
+            };
+            row.push(UnreconciledCell {
+                header: get_key(&field.select_label, task, task_id),
+                cell: UnreconciledField::Select { value },
+            });
         } else if obj.contains_key("task_label") {
-            text_annotation(task, annotation_id, row);
+            let field: TextField = serde_json::from_value(task.clone()).unwrap();
+            let value: String = match field.value {
+                Some(v) => v.clone(),
+                None => String::from(""),
+            };
+            row.push(UnreconciledCell {
+                header: get_key(&field.task_label, task, task_id),
+                cell: UnreconciledField::Text { value },
+            });
         } else if obj.contains_key("tool_label") && obj.contains_key("width") {
-            box_annotation(task, annotation_id, row);
+            let field: BoxField = serde_json::from_value(task.clone()).unwrap();
+            row.push(UnreconciledCell {
+                header: get_key(&field.tool_label, task, task_id),
+                cell: UnreconciledField::Box_ {
+                    left: field.x,
+                    top: field.y,
+                    right: field.x + field.width,
+                    bottom: field.y + field.height,
+                },
+            });
         } else if obj.contains_key("tool_label") && obj.contains_key("x1") {
-            length_annotation(task, annotation_id, row);
+            let field: LengthField = serde_json::from_value(task.clone()).unwrap();
+            row.push(UnreconciledCell {
+                header: get_key(&field.tool_label, task, task_id),
+                cell: UnreconciledField::Length {
+                    x1: field.x1,
+                    y1: field.y1,
+                    x2: field.x2,
+                    y2: field.y2,
+                },
+            });
         } else if obj.contains_key("tool_label") && obj.contains_key("x") {
-            point_annotation(task, annotation_id, row);
+            let field: PointField = serde_json::from_value(task.clone()).unwrap();
+            row.push(UnreconciledCell {
+                header: get_key(&field.tool_label, task, task_id),
+                cell: UnreconciledField::Point {
+                    x: field.x,
+                    y: field.y,
+                },
+            });
         } else if obj.contains_key("tool_label") && obj.contains_key("details") {
-            workflow_annotation(task, annotation_id, row);
+            println!("{} add_values_from_workflow {}", task_id, task);
         }
     } else {
         panic!("Unkown field type in: {:?}", task)
     };
 }
 
-fn nested_annotations(task: &Value, annotation_id: String, row: &mut UnreconciledRow) {
-    let mut annotation_id = get_annotation_id(task, annotation_id);
-    match &task["value"] {
-        Value::Array(subtasks) => {
-            for subtask in subtasks {
-                annotation_id = get_annotation_id(subtask, annotation_id);
-                flatten_tasks(subtask, annotation_id.clone(), row);
-            }
-        }
-        _ => panic!("Expected a list: {:?}", task),
-    }
+fn get_key(label: &String, task: &Value, task_id: String) -> String {
+    format!("~{}~ {}", get_task_id(task, task_id), label)
 }
 
-fn annotation_list(task: &Value, annotation_id: String, row: &mut UnreconciledRow) {
-    let mut field: ListField = serde_json::from_value(task.clone()).unwrap();
-    field.values.sort();
-    row.push(UnreconciledCell {
-        header: get_key(&field.task_label, task, annotation_id),
-        cell: UnreconciledField::List {
-            values: field.values,
-        },
-    });
-}
-
-fn selected_annotation(task: &Value, annotation_id: String, row: &mut UnreconciledRow) {
-    let field: SelectField = serde_json::from_value(task.clone()).unwrap();
-    let value: String = match field.value {
-        Some(v) => v.clone(),
-        None => String::from(""),
-    };
-    row.push(UnreconciledCell {
-        header: get_key(&field.select_label, task, annotation_id),
-        cell: UnreconciledField::Select { value },
-    });
-}
-
-fn text_annotation(task: &Value, annotation_id: String, row: &mut UnreconciledRow) {
-    let field: TextField = serde_json::from_value(task.clone()).unwrap();
-    let value: String = match field.value {
-        Some(v) => v.clone(),
-        None => String::from(""),
-    };
-    row.push(UnreconciledCell {
-        header: get_key(&field.task_label, task, annotation_id),
-        cell: UnreconciledField::Text { value },
-    });
-}
-
-fn box_annotation(task: &Value, annotation_id: String, row: &mut UnreconciledRow) {
-    let field: BoxField = serde_json::from_value(task.clone()).unwrap();
-    row.push(UnreconciledCell {
-        header: get_key(&field.tool_label, task, annotation_id),
-        cell: UnreconciledField::Box_ {
-            left: field.x,
-            top: field.y,
-            right: field.x + field.width,
-            bottom: field.y + field.height,
-        },
-    });
-}
-
-fn length_annotation(task: &Value, annotation_id: String, row: &mut UnreconciledRow) {
-    let field: LengthField = serde_json::from_value(task.clone()).unwrap();
-    row.push(UnreconciledCell {
-        header: get_key(&field.tool_label, task, annotation_id),
-        cell: UnreconciledField::Length {
-            x1: field.x1,
-            y1: field.y1,
-            x2: field.x2,
-            y2: field.y2,
-        },
-    });
-}
-
-fn point_annotation(task: &Value, annotation_id: String, row: &mut UnreconciledRow) {
-    let field: PointField = serde_json::from_value(task.clone()).unwrap();
-    row.push(UnreconciledCell {
-        header: get_key(&field.tool_label, task, annotation_id),
-        cell: UnreconciledField::Point {
-            x: field.x,
-            y: field.y,
-        },
-    });
-}
-
-fn workflow_annotation(task: &Value, annotation_id: String, _row: &mut UnreconciledRow) {
-    println!("{} add_values_from_workflow {}", annotation_id, task);
-}
-
-fn get_key(label: &String, task: &Value, annotation_id: String) -> String {
-    format!("~{}~ {}", get_annotation_id(task, annotation_id), label)
-}
-
-fn get_annotation_id(task: &Value, annotation_id: String) -> String {
+fn get_task_id(task: &Value, task_id: String) -> String {
     match task {
         Value::Object(obj) if obj.contains_key("task") => strip_quotes(obj["task"].to_string()),
-        _ => annotation_id,
+        _ => task_id,
     }
 }
 
