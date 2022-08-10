@@ -1,5 +1,3 @@
-// Parse the format given to us by Zooniverse in a classifications export
-
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -91,67 +89,61 @@ pub struct UnreconciledCell {
 
 pub type UnreconciledRow = Vec<UnreconciledCell>;
 
+const USER_NAME: &str = "user_name";
+const SUBJECT_ID: &str = "subject_id";
+const SUBJECT_IDS: &str = "subject_ids";
+const CLASSIFICATION_ID: &str = "classification_id";
+
 // ---------------------------------------------------------------------------------
 pub fn parse(path: &std::path::Path) -> anyhow::Result<(), Box<dyn std::error::Error>> {
     let mut reader = csv::Reader::from_path(path)?;
-    let mut result = Ok(());
 
     for deserialized_row in reader.deserialize() {
         let raw_row: CsvRow = deserialized_row?;
-        let mut row: UnreconciledRow = Vec::new();
-
-        row.push(UnreconciledCell {
-            header: String::from("subject_id"),
-            cell: UnreconciledField::Same {
-                value: raw_row["subject_ids"].clone(),
+        let mut row: UnreconciledRow = vec![
+            UnreconciledCell {
+                header: String::from(SUBJECT_ID),
+                cell: UnreconciledField::Same {
+                    value: raw_row[SUBJECT_IDS].clone(),
+                },
             },
-        });
-
-        row.push(UnreconciledCell {
-            header: String::from("classification_id"),
-            cell: UnreconciledField::NoOp {
-                value: raw_row["classification_id"].clone(),
-            },
-        });
-
-        if raw_row.contains_key("user_name") {
-            row.push(UnreconciledCell {
-                header: String::from("user_name"),
+            UnreconciledCell {
+                header: String::from(CLASSIFICATION_ID),
                 cell: UnreconciledField::NoOp {
-                    value: raw_row["user_name"].clone(),
+                    value: raw_row[CLASSIFICATION_ID].clone(),
+                },
+            },
+        ];
+
+        if raw_row.contains_key(USER_NAME) {
+            row.push(UnreconciledCell {
+                header: String::from(USER_NAME),
+                cell: UnreconciledField::NoOp {
+                    value: raw_row[USER_NAME].clone(),
                 },
             });
         }
 
         let annotations: Value = serde_json::from_str(&raw_row["annotations"])?;
-        result = extract_annotations(&annotations, &mut row);
+        match annotations {
+            Value::Array(tasks) => {
+                for task in tasks {
+                    flatten_tasks(&task, String::from(""), &mut row);
+                }
+            }
+            _ => panic!("No annotations in this CSV row: {:?}", annotations),
+        }
 
-        println!("");
-        for cell in row.iter() {
+        println!();
+        for cell in &row {
             println!("{}: {:?}", cell.header, cell.cell);
         }
-    }
-
-    result
-}
-
-// ---------------------------------------------------------------------------------
-fn extract_annotations(
-    annotations: &Value,
-    row: &mut UnreconciledRow,
-) -> anyhow::Result<(), Box<dyn std::error::Error>> {
-    match annotations {
-        Value::Array(tasks_vector) => {
-            for tasks in tasks_vector {
-                flatten_tasks(tasks, String::from(""), row);
-            }
-        }
-        _ => panic!("No annotations in this row {:?}", annotations),
     }
 
     Ok(())
 }
 
+// ---------------------------------------------------------------------------------
 fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
     let task_id = get_task_id(task, task_id);
 
@@ -179,7 +171,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
         } else if obj.contains_key("select_label") {
             let field: SelectField = serde_json::from_value(task.clone()).unwrap();
             let value: String = match field.value {
-                Some(v) => v.clone(),
+                Some(v) => v,
                 None => String::from(""),
             };
             row.push(UnreconciledCell {
@@ -189,7 +181,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
         } else if obj.contains_key("task_label") {
             let field: TextField = serde_json::from_value(task.clone()).unwrap();
             let value: String = match field.value {
-                Some(v) => v.clone(),
+                Some(v) => v,
                 None => String::from(""),
             };
             row.push(UnreconciledCell {
@@ -236,17 +228,14 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
 }
 
 fn get_key(label: &String, task: &Value, task_id: String) -> String {
-    format!("~{}~ {}", get_task_id(task, task_id), label)
+    format!("{}~{}", get_task_id(task, task_id), label)
 }
 
 fn get_task_id(task: &Value, task_id: String) -> String {
     match task {
-        Value::Object(obj) if obj.contains_key("task") => strip_quotes(obj["task"].to_string()),
+        Value::Object(obj) if obj.contains_key("task") => {
+            obj["task"].to_string().trim_end_matches('"').to_string()
+        }
         _ => task_id,
     }
-}
-
-fn strip_quotes(quoted: String) -> String {
-    let end = quoted.len() - 1;
-    quoted[1..end].to_string()
 }
