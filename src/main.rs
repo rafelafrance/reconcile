@@ -14,7 +14,7 @@ struct Cli {
     #[clap(value_parser, value_name = "FILE")]
     zooniverse: std::path::PathBuf,
 
-    ///Write the unreconciled workflow classifications to this CSV file
+    ///Write the unreconciled classifications to this CSV file
     #[clap(short, long, value_parser, value_name = "FILE")]
     unreconciled: Option<std::path::PathBuf>,
 
@@ -25,10 +25,18 @@ struct Cli {
     ///Write the summary of the reconciliation to this HTML file
     #[clap(short, long, value_parser, value_name = "FILE")]
     summary: Option<std::path::PathBuf>,
+
+    ///The workflow ID
+    #[clap(short, long, value_parser, value_name = "INT")]
+    workflow_id: Option<i32>,
+
+    ///Read workflow strings from this CSV file
+    #[clap(short, long, value_parser, value_name = "FILE")]
+    workflow_csv: Option<std::path::PathBuf>,
 }
 
 fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
 
-    zooniverse::parse(&args.zooniverse)
+    zooniverse::parse(&args.zooniverse, &args.workflow_csv)
 }

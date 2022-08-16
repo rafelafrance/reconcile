@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use serde_json::Value;
-
-type CsvRow = std::collections::HashMap<String, String>;
+use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------------
 #[derive(Deserialize)]
@@ -89,17 +88,29 @@ pub struct UnreconciledCell {
 
 pub type UnreconciledRow = Vec<UnreconciledCell>;
 
+struct WorkflowStrings {
+    labels: HashMap<String, Vec<String>>,
+    values: HashMap<String, HashMap<String, String>>,
+}
+
 const USER_NAME: &str = "user_name";
 const SUBJECT_ID: &str = "subject_id";
 const SUBJECT_IDS: &str = "subject_ids";
 const CLASSIFICATION_ID: &str = "classification_id";
 
 // ---------------------------------------------------------------------------------
-pub fn parse(path: &std::path::Path) -> anyhow::Result<(), Box<dyn std::error::Error>> {
-    let mut reader = csv::Reader::from_path(path)?;
+pub fn parse(
+    classifications: &std::path::Path,
+    workflow_csv: &Option<std::path::Path>,
+) -> anyhow::Result<(), Box<dyn std::error::Error>> {
+    let mut reader = csv::Reader::from_path(classifications)?;
 
-    for deserialized_row in reader.deserialize() {
-        let raw_row: CsvRow = deserialized_row?;
+    let all_rows = reader.deserialize();
+
+    let workflow_id = get_workflow_id();
+
+    for deserialized_row in all_rows {
+        let raw_row: HashMap<String, String> = deserialized_row?;
         let mut row: UnreconciledRow = vec![
             UnreconciledCell {
                 header: String::from(SUBJECT_ID),
@@ -193,10 +204,10 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
             row.push(UnreconciledCell {
                 header: get_key(&field.tool_label, task, task_id),
                 cell: UnreconciledField::Box_ {
-                    left: field.x,
-                    top: field.y,
-                    right: field.x + field.width,
-                    bottom: field.y + field.height,
+                    left: field.x.round(),
+                    top: field.y.round(),
+                    right: (field.x + field.width).round(),
+                    bottom: (field.y + field.height).round(),
                 },
             });
         } else if obj.contains_key("tool_label") && obj.contains_key("x1") {
@@ -204,10 +215,10 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
             row.push(UnreconciledCell {
                 header: get_key(&field.tool_label, task, task_id),
                 cell: UnreconciledField::Length {
-                    x1: field.x1,
-                    y1: field.y1,
-                    x2: field.x2,
-                    y2: field.y2,
+                    x1: field.x1.round(),
+                    y1: field.y1.round(),
+                    x2: field.x2.round(),
+                    y2: field.y2.round(),
                 },
             });
         } else if obj.contains_key("tool_label") && obj.contains_key("x") {
@@ -215,17 +226,21 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
             row.push(UnreconciledCell {
                 header: get_key(&field.tool_label, task, task_id),
                 cell: UnreconciledField::Point {
-                    x: field.x,
-                    y: field.y,
+                    x: field.x.round(),
+                    y: field.y.round(),
                 },
             });
         } else if obj.contains_key("tool_label") && obj.contains_key("details") {
+            //workflow_task(task, task_id, workflow_strings);
             println!("{} add_values_from_workflow {}", task_id, task);
         }
     } else {
         panic!("Unkown field type in: {:?}", task)
     };
 }
+
+// fn workflow_task(task: &Value, task_id: String, row: &mut UnreconciledRow) {
+// }
 
 fn get_key(label: &String, task: &Value, task_id: String) -> String {
     format!("{}~{}", get_task_id(task, task_id), label)
@@ -239,3 +254,8 @@ fn get_task_id(task: &Value, task_id: String) -> String {
         _ => task_id,
     }
 }
+
+fn get_workflow_id() {}
+
+// fn get_workflow_strings() {
+// }
