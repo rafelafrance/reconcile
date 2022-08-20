@@ -1,8 +1,14 @@
+use crate::classifications::fields::{
+    Unreconciled, UnreconciledCell, UnreconciledField, UnreconciledRow,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::{Path, PathBuf};
+
+#[path = "fields.rs"]
+mod fields;
 
 // ---------------------------------------------------------------------------------
 #[derive(Deserialize)]
@@ -48,76 +54,16 @@ struct TextField {
     value: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-pub enum UnreconciledField {
-    Box_ {
-        left: f32,
-        top: f32,
-        right: f32,
-        bottom: f32,
-    },
-    Length {
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-    },
-    List {
-        values: Vec<String>,
-    },
-    NoOp {
-        value: String,
-    },
-    Point {
-        x: f32,
-        y: f32,
-    },
-    Same {
-        value: String,
-    },
-    Select {
-        value: String,
-    },
-    Text {
-        value: String,
-    },
-}
-
-pub struct UnreconciledCell {
-    header: String,
-    cell: UnreconciledField,
-}
-
-pub type UnreconciledRow = Vec<UnreconciledCell>;
-
-pub struct Unreconciled {
-    workflow_id: String,
-    workflow_name: String,
-    rows: Vec<UnreconciledRow>,
-}
-
-struct WorkflowStrings {
-    labels: HashMap<String, Vec<String>>,
-    values: HashMap<String, HashMap<String, String>>,
-}
-
-const USER_NAME: &str = "user_name";
-const SUBJECT_ID: &str = "subject_id";
-const SUBJECT_IDS: &str = "subject_ids";
-const CLASSIFICATION_ID: &str = "classification_id";
-
 // ---------------------------------------------------------------------------------
 pub fn parse(
     classifications_csv: &PathBuf,
-    workflow_csv: &Option<PathBuf>,
     workflow_id: &Option<String>,
-) -> anyhow::Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn Error>> {
     let mut reader = csv::Reader::from_path(classifications_csv)
         .expect("Could not read the classifications CSV file");
 
     let workflow_id = get_workflow_id(workflow_id, classifications_csv).unwrap();
     let workflow_name = get_workflow_name(classifications_csv).unwrap();
-    let workflow_stings = get_workflow_strings(workflow_csv, &workflow_id).unwrap();
 
     let mut unreconciled: Unreconciled = Unreconciled {
         workflow_id,
@@ -131,24 +77,24 @@ pub fn parse(
 
         let mut row: UnreconciledRow = vec![
             UnreconciledCell {
-                header: String::from(SUBJECT_ID),
+                header: String::from(fields::SUBJECT_ID),
                 cell: UnreconciledField::Same {
-                    value: raw_row[SUBJECT_IDS].clone(),
+                    value: raw_row[fields::SUBJECT_IDS].clone(),
                 },
             },
             UnreconciledCell {
-                header: String::from(CLASSIFICATION_ID),
+                header: String::from(fields::CLASSIFICATION_ID),
                 cell: UnreconciledField::NoOp {
-                    value: raw_row[CLASSIFICATION_ID].clone(),
+                    value: raw_row[fields::CLASSIFICATION_ID].clone(),
                 },
             },
         ];
 
-        if raw_row.contains_key(USER_NAME) {
+        if raw_row.contains_key(fields::USER_NAME) {
             row.push(UnreconciledCell {
-                header: String::from(USER_NAME),
+                header: String::from(fields::USER_NAME),
                 cell: UnreconciledField::NoOp {
-                    value: raw_row[USER_NAME].clone(),
+                    value: raw_row[fields::USER_NAME].clone(),
                 },
             });
         }
@@ -159,7 +105,7 @@ pub fn parse(
         match annotations {
             Value::Array(tasks) => {
                 for task in tasks {
-                    flatten_tasks(&task, String::from(""), &mut row, &workflow_stings);
+                    flatten_tasks(&task, String::from(""), &mut row);
                 }
             }
             _ => panic!("No annotations in this CSV row: {:?}", annotations),
@@ -178,7 +124,11 @@ pub fn parse(
 }
 
 // ---------------------------------------------------------------------------------
-fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow, workflow_strings: &WorkflowStrings) {
+fn flatten_tasks(
+    task: &Value,
+    task_id: String,
+    row: &mut UnreconciledRow,
+) {
     let task_id = get_task_id(task, task_id);
 
     if let Value::Object(obj) = task {
@@ -199,7 +149,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow, workf
                 Value::Array(subtasks) => {
                     for subtask in subtasks {
                         task_id = get_task_id(subtask, task_id);
-                        flatten_tasks(subtask, task_id.clone(), row, workflow_strings);
+                        flatten_tasks(subtask, task_id.clone(), row);
                     }
                 }
                 _ => panic!("Expected a list: {:?}", task),
@@ -265,17 +215,11 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow, workf
                     y: field.y.round(),
                 },
             });
-        } else if obj.contains_key("tool_label") && obj.contains_key("details") {
-            //workflow_task(task, task_id, workflow_strings);
-            println!("{} add_values_from_workflow {}", task_id, task);
         }
     } else {
         panic!("Unkown field type in: {:?}", task)
     };
 }
-
-// fn workflow_task(task: &Value, task_id: String, row: &mut UnreconciledRow) {
-// }
 
 fn get_key(label: &String, task: &Value, task_id: String) -> String {
     format!("{}~{}", get_task_id(task, task_id), label)
@@ -321,36 +265,4 @@ fn get_workflow_name(classifications_csv: &Path) -> Result<String, Box<dyn Error
     let mut reader = csv::Reader::from_path(classifications_csv).unwrap();
     let row: HashMap<String, String> = reader.deserialize().next().unwrap().unwrap();
     Ok(row["workflow_name"].clone())
-}
-
-
-fn get_workflow_strings(
-    workflow_csv: &Option<PathBuf>,
-    workflow_id: &str,
-) -> Result<WorkflowStrings, Box<dyn Error>> {
-    let workflow_strings = WorkflowStrings {
-        labels: HashMap::new(),
-        values: HashMap::new(),
-    };
-    let workflow_strings = match workflow_csv {
-        None => workflow_strings,
-        Some(file) => {
-            let mut reader = csv::Reader::from_path(file)
-                .expect("Could not read the workflow CSV file");
-            let mut strings = String::new();
-            for wrapped_row in reader.deserialize() {
-                let row: HashMap<String, String> = wrapped_row
-                    .expect("Could not parse a row in the workflow CSV file");
-                if row["workflow_id"] == workflow_id {
-                    strings = row["strings"].clone();
-                }
-            }
-            let strings: Value = serde_json::from_str(&strings)
-                .expect("Could not parse workflow strings field");
-            let instructions: HashMap<String, String> = HashMap::new();
-            // string.iter().map(|s|
-            workflow_strings
-        }
-    };
-    Ok(workflow_strings)
 }

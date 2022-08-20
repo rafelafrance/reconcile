@@ -36,8 +36,8 @@ struct Cli {
     workflow_csv: Option<PathBuf>,
 }
 
-fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
 
-    classifications::parse(&args.classifications_csv, &args.workflow_csv, &args.workflow_id)
+    classifications::parse(&args.classifications_csv, &args.workflow_id)
 }
