@@ -1,7 +1,10 @@
 use clap::Parser;
+use output::write_unreconciled;
 use std::path::PathBuf;
 
-mod classifications;
+pub mod classifications;
+pub mod fields;
+pub mod output;
 
 #[derive(Parser)]
 #[clap(
@@ -39,5 +42,12 @@ struct Cli {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
 
-    classifications::parse(&args.classifications_csv, &args.workflow_id)
+    let mut unreconciled =
+        classifications::parse(&args.classifications_csv, &args.workflow_id).unwrap();
+
+    if let Option::Some(unreconciled_csv) = args.unreconciled_csv {
+        _ = write_unreconciled(&unreconciled_csv, &mut unreconciled);
+    }
+
+    Ok(())
 }
