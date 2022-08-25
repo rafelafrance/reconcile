@@ -1,5 +1,5 @@
 use crate::fields;
-use crate::fields::{Unreconciled, UnreconciledCell, UnreconciledField, UnreconciledRow};
+use crate::fields::{Unreconciled, UnreconciledField, UnreconciledRow};
 use csv::Writer;
 use std::error::Error;
 use std::fs::File;
@@ -9,21 +9,10 @@ pub fn write_unreconciled(
     unreconciled_csv: &Path,
     unreconciled: &mut Unreconciled,
 ) -> Result<(), Box<dyn Error>> {
-    unreconciled.rows.sort_by_key(|row| {
-        let subject: &UnreconciledCell = row
-            .iter()
-            .filter(|c| c.header == fields::SUBJECT_ID)
-            .last()
-            .unwrap();
-        let value: String = match &subject.cell {
-            UnreconciledField::Same { value } => value.clone(),
-            _ => panic!("Missing a subject ID"),
-        };
-        value
-    });
+    unreconciled.rows.sort_by_key(fields::get_subject_id);
 
-    let mut writer =
-        Writer::from_path(unreconciled_csv).expect("Could not open the unreconciled CSV file");
+    let mut writer = Writer::from_path(unreconciled_csv)
+        .expect("Could not open the unreconciled CSV file");
 
     for (i, row) in unreconciled.rows.iter().enumerate() {
         if i == 0 {

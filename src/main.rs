@@ -1,10 +1,10 @@
-use clap::Parser;
-use output::write_unreconciled;
-use std::path::PathBuf;
-
 pub mod classifications;
 pub mod fields;
-pub mod output;
+pub mod output_unreconciled;
+
+use clap::Parser;
+use output_unreconciled::write_unreconciled;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[clap(

@@ -69,12 +69,12 @@ pub fn parse(
         let raw_row: HashMap<String, String> =
             deserialized_row.expect("Could not parse a row in the classifications CSV file");
 
-        let mut row: UnreconciledRow = vec![UnreconciledCell {
+        let mut row = UnreconciledRow::new(UnreconciledCell {
             header: String::from(fields::SUBJECT_ID),
             cell: UnreconciledField::Same {
                 value: raw_row[fields::SUBJECT_IDS].clone(),
             },
-        }];
+        });
 
         let annotations: Value = serde_json::from_str(&raw_row[fields::ANNOTATIONS])
             .expect("Could not parse the annotations field");
@@ -87,11 +87,8 @@ pub fn parse(
             panic!("No annotations in this CSV row: {:?}", annotations)
         }
 
-        let metadata: HashMap<String, Value> = serde_json::from_str(&raw_row[fields::METADATA])
-            .expect("Could not parse the metadata field");
-
         let targets = [
-            fields::CLASS_ID,
+            fields::CLASSIFICATION_ID,
             fields::USER_NAME,
             fields::GOLD_STD,
             fields::EXPERT,
@@ -99,7 +96,7 @@ pub fn parse(
         ];
         for target in targets {
             if raw_row.contains_key(target) {
-                row.push(UnreconciledCell {
+                row.push_metadata(UnreconciledCell {
                     header: String::from(target),
                     cell: UnreconciledField::NoOp {
                         value: raw_row[target].clone(),
@@ -108,14 +105,38 @@ pub fn parse(
             }
         }
 
+        let metadata: HashMap<String, Value> = serde_json::from_str(&raw_row[fields::METADATA])
+            .expect("Could not parse the metadata field");
+
         for target in [fields::STARTED_AT, fields::FINISHED_AT] {
             if metadata.contains_key(target) {
-                row.push(UnreconciledCell {
+                row.push_metadata(UnreconciledCell {
                     header: target.to_string(),
                     cell: UnreconciledField::NoOp {
-                        value: metadata[target].to_string(),
+                        value: metadata[target].to_string().trim_matches('"').to_string(),
                     },
                 })
+            }
+        }
+
+        let subject_data: HashMap<String, Value> = serde_json::from_str(&raw_row[fields::SUBJECT_DATA])
+            .expect("Could not parse the subject_data field");
+
+        for values in subject_data.values() {
+            match values {
+                Value::Object(obj) => {
+                    for (header, value) in obj {
+                        if header != "retired" {
+                            row.push_subject_data(UnreconciledCell {
+                                header: header.to_string(),
+                                cell: UnreconciledField::Same {
+                                    value: value.to_string(),
+                                }
+                            })
+                        }
+                    }
+                },
+                _ => {},
             }
         }
 
@@ -134,7 +155,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
                 serde_json::from_value(task.clone()).expect("Could not parse a list field");
 
             field.values.sort();
-            row.push(UnreconciledCell {
+            row.push_annotation(UnreconciledCell {
                 header: get_key(&field.task_label, task, task_id),
                 cell: UnreconciledField::List {
                     values: field.values,
@@ -159,7 +180,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
                 Some(v) => v,
                 None => String::from(""),
             };
-            row.push(UnreconciledCell {
+            row.push_annotation(UnreconciledCell {
                 header: get_key(&field.select_label, task, task_id),
                 cell: UnreconciledField::Select { value },
             });
@@ -171,7 +192,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
                 Some(v) => v,
                 None => String::from(""),
             };
-            row.push(UnreconciledCell {
+            row.push_annotation(UnreconciledCell {
                 header: get_key(&field.task_label, task, task_id),
                 cell: UnreconciledField::Text { value },
             });
@@ -179,7 +200,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
             let field: BoxField =
                 serde_json::from_value(task.clone()).expect("Could not parse a box field");
 
-            row.push(UnreconciledCell {
+            row.push_annotation(UnreconciledCell {
                 header: get_key(&field.tool_label, task, task_id),
                 cell: UnreconciledField::Box_ {
                     left: field.x.round(),
@@ -192,7 +213,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
             let field: LengthField =
                 serde_json::from_value(task.clone()).expect("Could not parse a length field");
 
-            row.push(UnreconciledCell {
+            row.push_annotation(UnreconciledCell {
                 header: get_key(&field.tool_label, task, task_id),
                 cell: UnreconciledField::Length {
                     x1: field.x1.round(),
@@ -205,7 +226,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
             let field: PointField =
                 serde_json::from_value(task.clone()).expect("Could not parse a point field");
 
-            row.push(UnreconciledCell {
+            row.push_annotation(UnreconciledCell {
                 header: get_key(&field.tool_label, task, task_id),
                 cell: UnreconciledField::Point {
                     x: field.x.round(),
@@ -219,7 +240,7 @@ fn flatten_tasks(task: &Value, task_id: String, row: &mut UnreconciledRow) {
 }
 
 fn get_key(label: &String, task: &Value, task_id: String) -> String {
-    format!("{}~{}", get_task_id(task, task_id), label)
+    format!("{}: {}", get_task_id(task, task_id), label)
 }
 
 fn get_task_id(task: &Value, task_id: String) -> String {
