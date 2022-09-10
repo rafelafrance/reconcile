@@ -59,30 +59,83 @@ pub struct UnreconciledCell {
 // pub type UnreconciledRow = Vec<UnreconciledCell>;
 #[derive(Debug)]
 pub struct UnreconciledRow {
+    subject_id: UnreconciledCell,
     annotations: Vec<UnreconciledCell>,
     metadata: Vec<UnreconciledCell>,
     subject_data: Vec<UnreconciledCell>,
 }
 
+
+pub struct RowIter<'a> {
+    row: &'a UnreconciledRow,
+    annotations_end: usize,
+    metadata_end: usize,
+    subject_data_end: usize,
+    pos: usize,
+}
+
+impl<'a> Iterator for RowIter<'a> {
+    type Item = &'a UnreconciledCell;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos == 0 {
+            self.pos += 1;
+            Some(&self.row.subject_id)
+        } else if self.pos <= self.annotations_end {
+            self.pos += 1;
+            Some(&self.row.annotations[self.pos - 1])
+        } else if self.pos <= self.metadata_end {
+            self.pos += 1;
+            Some(&self.row.annotations[self.pos - self.annotations_end - 1])
+        } else if self.pos <= self.subject_data_end {
+            self.pos += 1;
+            Some(&self.row.annotations[self.pos - self.metadata_end - 1])
+        } else {
+            None
+        }
+    }
+}
+
 impl UnreconciledRow {
     pub fn new(subject_id: UnreconciledCell) -> Self {
         Self {
+            subject_id,
             annotations: Vec::new(),
             metadata: Vec::new(),
-            subject_data: vec![subject_id],
+            subject_data: Vec::new(),
         }
     }
 
-    pub fn push_annotation(&self, cell: UnreconciledCell) {
+    pub fn push_annotation(&mut self, cell: UnreconciledCell) {
         self.annotations.push(cell);
     }
 
-    pub fn push_metadata(&self, cell: UnreconciledCell) {
+    pub fn push_metadata(&mut self, cell: UnreconciledCell) {
         self.metadata.push(cell);
     }
 
-    pub fn push_subject_data(&self, cell: UnreconciledCell) {
+    pub fn push_subject_data(&mut self, cell: UnreconciledCell) {
         self.subject_data.push(cell);
+    }
+
+    pub fn iter(&self) -> RowIter {
+        let a = self.annotations.len();
+        let m = self.metadata.len();
+        let s = self.subject_data.len();
+        RowIter {
+            row: self,
+            annotations_end: a,
+            metadata_end: a + m,
+            subject_data_end: a + m + s,
+            pos: 0,
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a UnreconciledRow {
+    type Item = &'a UnreconciledCell;
+    type IntoIter = RowIter<'a>;
+    fn into_iter(self) -> RowIter<'a> {
+        self.iter()
     }
 }
 
