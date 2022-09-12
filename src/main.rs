@@ -1,9 +1,8 @@
 pub mod classifications;
-pub mod fields;
-pub mod output_unreconciled;
+pub mod unreconciled;
 
 use clap::Parser;
-use output_unreconciled::write_unreconciled;
+// use unreconciled::write_unreconciled;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -42,12 +41,12 @@ struct Cli {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
 
-    let mut unreconciled =
+    let mut _unrec =
         classifications::parse(&args.classifications_csv, &args.workflow_id).unwrap();
 
-    if let Option::Some(unreconciled_csv) = args.unreconciled_csv {
-        _ = write_unreconciled(&unreconciled_csv, &mut unreconciled);
-    }
+    // if let Option::Some(unreconciled_csv) = args.unreconciled_csv {
+    //     _ = write_unreconciled(&unreconciled_csv, &mut unreconciled);
+    // }
 
     Ok(())
 }
