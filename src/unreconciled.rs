@@ -1,12 +1,13 @@
 use csv::Writer;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{ BTreeMap, HashMap };
 use std::error::Error;
 use std::fs::File;
 use std::iter;
 use std::path::Path;
 
 pub const SUBJECT_ID: &str = "subject_id";
+
 
 #[derive(Clone, Debug, Deserialize)]
 pub enum UnreconciledField {
@@ -45,13 +46,14 @@ pub enum UnreconciledField {
 }
 
 pub type UnreconciledRow = Vec<UnreconciledField>;
-pub type NameMap = HashMap<String, (usize, UnreconciledField)>;
+pub type UnreconciledNames = HashMap<String, (usize, UnreconciledField)>;
+pub type UnreconciledGrouped<'a> = BTreeMap<&'a String, Vec<&'a UnreconciledRow>>;
 
 #[derive(Debug, Default)]
 pub struct Unreconciled {
     pub workflow_id: String,
     pub workflow_name: String,
-    pub names: NameMap,
+    pub names: UnreconciledNames,
     pub rows: Vec<UnreconciledRow>,
 }
 
@@ -86,19 +88,34 @@ impl Unreconciled {
             self.rows.last_mut().unwrap()[self.names[name].0] = field;
         }
     }
+
+    pub fn sort_rows(&mut self) {
+        let sub_col = self.names[SUBJECT_ID].0;
+        self.rows
+            .sort_unstable_by_key(|row| match &row[sub_col] {
+                UnreconciledField::Same { value } => value.clone(),
+                _ => "".to_string(),
+            })
+    }
+}
+
+pub fn group_rows(unreconciled: &'_ Unreconciled) -> UnreconciledGrouped {
+    let sub_col = unreconciled.names[SUBJECT_ID].0;
+    let mut grouped: UnreconciledGrouped = BTreeMap::new();
+    unreconciled.rows.iter().for_each(|row| {
+        let key = match &row[sub_col] {
+            UnreconciledField::Same { value } => value,
+            _ => panic!("Unreconciled row is missing a subject ID"),
+        };
+        grouped.entry(key).or_insert(Vec::new()).push(row);
+    });
+    grouped
 }
 
 pub fn write_unreconciled(
     unreconciled_csv: &Path,
     unreconciled: &mut Unreconciled,
 ) -> Result<(), Box<dyn Error>> {
-    let sub_col = unreconciled.names[SUBJECT_ID].0;
-    unreconciled.rows.sort_unstable_by_key(|r| {
-        match &r[sub_col] {
-            UnreconciledField::Same { value } => value.clone(),
-            _ => "".to_string(),
-        }
-    });
 
     let mut writer =
         Writer::from_path(unreconciled_csv).expect("Could not open the unreconciled CSV file");
@@ -112,7 +129,10 @@ pub fn write_unreconciled(
     Ok(())
 }
 
-fn print_header(names: &NameMap, writer: &mut Writer<File>,) -> Result<(), Box<dyn Error>> {
+fn print_header(
+    names: &UnreconciledNames,
+    writer: &mut Writer<File>,
+) -> Result<(), Box<dyn Error>> {
     let mut header: Vec<String> = Vec::new();
 
     let mut names: Vec<_> = names.iter().collect();

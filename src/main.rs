@@ -1,9 +1,12 @@
 pub mod classifications;
+pub mod reconciled;
 pub mod unreconciled;
 
 use clap::Parser;
-use unreconciled::write_unreconciled;
+use std::error::Error;
 use std::path::PathBuf;
+use reconciled::reconcile;
+use unreconciled::write_unreconciled;
 
 #[derive(Parser)]
 #[clap(
@@ -38,15 +41,19 @@ struct Cli {
     workflow_csv: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
+    pluralizer::initialize();
+
     let args = Cli::parse();
 
-    let mut unrec =
-        classifications::parse(&args.classifications_csv, &args.workflow_id).unwrap();
+    let mut unrec = classifications::parse(&args.classifications_csv, &args.workflow_id).unwrap();
 
     if let Option::Some(unreconciled_csv) = args.unreconciled_csv {
         _ = write_unreconciled(&unreconciled_csv, &mut unrec);
     }
+
+    if let Option::Some(_reconciled_csv) = args.reconciled_csv {
+        let _rec = reconcile(&unrec); }
 
     Ok(())
 }
