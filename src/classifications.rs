@@ -142,7 +142,7 @@ pub fn parse(
                         unreconciled.set_cell(
                             header,
                             UnreconciledField::Same {
-                                value: value.to_string(),
+                                value: value.to_string().trim_matches('"').to_string(),
                             }
                         );
                     }
