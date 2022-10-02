@@ -26,6 +26,7 @@ pub enum UnreconciledField {
     },
     List {
         values: Vec<String>,
+        value: String,
     },
     NoOp {
         value: String,
@@ -162,7 +163,7 @@ fn print_header(
                 header.push(format!("{}_x2", name));
                 header.push(format!("{}_y2", name));
             }
-            UnreconciledField::List { values: _ } => {
+            UnreconciledField::List { values: _, value: _ } => {
                 header.push(name.to_string());
             }
             UnreconciledField::NoOp { value: _ } => {
@@ -209,7 +210,7 @@ fn print_row(row: &UnreconciledRow, writer: &mut Writer<File>) -> Result<(), Box
                 output.push(format!("{}", x2.round()));
                 output.push(format!("{}", y2.round()));
             }
-            UnreconciledField::List { values } => {
+            UnreconciledField::List { values, value: _ } => {
                 output.push(values.join(" "));
             }
             UnreconciledField::NoOp { value } => {

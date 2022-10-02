@@ -1,11 +1,12 @@
 pub mod classifications;
+pub mod reconcile_fields;
 pub mod reconciled;
 pub mod unreconciled;
 
 use clap::Parser;
+use reconciled::reconcile;
 use std::error::Error;
 use std::path::PathBuf;
-use reconciled::reconcile;
 use unreconciled::write_unreconciled;
 
 #[derive(Parser)]
@@ -53,7 +54,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     if let Option::Some(_reconciled_csv) = args.reconciled_csv {
-        let _rec = reconcile(&unrec); }
+        let _rec = reconcile(&unrec);
+    }
 
     Ok(())
 }
