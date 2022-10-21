@@ -1,13 +1,13 @@
-pub mod classifications;
+pub mod flat;
+pub mod flatten;
+pub mod reconcile;
 pub mod reconcile_fields;
-pub mod reconciled;
-pub mod unreconciled;
 
 use clap::Parser;
-use reconciled::reconcile;
+use flat::write_flattened;
+use reconcile::reconcile;
 use std::error::Error;
 use std::path::PathBuf;
-use unreconciled::write_unreconciled;
 
 #[derive(Parser)]
 #[clap(
@@ -21,9 +21,9 @@ struct Cli {
     #[clap(value_parser, value_name = "FILE")]
     classifications_csv: PathBuf,
 
-    ///Write the unreconciled classifications to this CSV file
+    ///Write the flattened classifications to this CSV file
     #[clap(short, long, value_parser, value_name = "FILE")]
-    unreconciled_csv: Option<PathBuf>,
+    flattened_csv: Option<PathBuf>,
 
     ///Write the reconciled classifications to this CSV file
     #[clap(short, long, value_parser, value_name = "FILE")]
@@ -47,14 +47,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let args = Cli::parse();
 
-    let mut unrec = classifications::parse(&args.classifications_csv, &args.workflow_id).unwrap();
+    let mut flattened = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
 
-    if let Option::Some(unreconciled_csv) = args.unreconciled_csv {
-        _ = write_unreconciled(&unreconciled_csv, &mut unrec);
+    if let Option::Some(flat_csv) = args.flattened_csv {
+        _ = write_flattened(&flat_csv, &mut flattened);
     }
 
     if let Option::Some(_reconciled_csv) = args.reconciled_csv {
-        let _rec = reconcile(&unrec);
+        let _rec = reconcile(&flattened);
     }
 
     Ok(())

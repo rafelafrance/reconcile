@@ -1,11 +1,11 @@
-use crate::unreconciled::{Unreconciled, UnreconciledField};
+use crate::flat::{Flat, FlatField};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-// Known fields to extract
+// Known fields to extract or use
 pub const ANNOTATIONS: &str = "annotations";
 pub const CLASSIFICATION_ID: &str = "classification_id";
 pub const EXPERT: &str = "expert";
@@ -62,27 +62,27 @@ struct TextField {
     value: Option<String>,
 }
 
-pub fn parse(
+pub fn flatten(
     classifications_csv: &PathBuf,
     workflow_id: &Option<String>,
-) -> Result<Unreconciled, Box<dyn Error>> {
+) -> Result<Flat, Box<dyn Error>> {
     let mut reader = csv::Reader::from_path(classifications_csv)
         .expect("Could not read the classifications CSV file");
 
     let workflow_id = get_workflow_id(workflow_id, classifications_csv).unwrap();
     let workflow_name = get_workflow_name(classifications_csv).unwrap();
 
-    let mut unreconciled: Unreconciled = Unreconciled::new(&workflow_id, &workflow_name);
+    let mut flat: Flat = Flat::new(&workflow_id, &workflow_name);
 
     for deserialized_row in reader.deserialize() {
         let raw_row: HashMap<String, String> =
             deserialized_row.expect("Could not parse a row in the classifications CSV file");
 
-        unreconciled.add_row();
+        flat.add_row();
 
-        unreconciled.set_cell(
+        flat.set_cell(
             SUBJECT_ID,
-            UnreconciledField::Same {
+            FlatField::Same {
                 value: raw_row[SUBJECT_IDS].clone(),
             },
         );
@@ -92,7 +92,7 @@ pub fn parse(
 
         if let Value::Array(tasks) = annotations {
             for task in tasks {
-                flatten_tasks(&task, String::from(""), &mut unreconciled);
+                flatten_tasks(&task, String::from(""), &mut flat);
             }
         } else {
             panic!("No annotations in this CSV row: {:?}", annotations)
@@ -101,9 +101,9 @@ pub fn parse(
         let targets = [CLASSIFICATION_ID, USER_NAME, GOLD_STD, EXPERT, WORKFLOW_VER];
         for target in targets {
             if raw_row.contains_key(target) {
-                unreconciled.set_cell(
+                flat.set_cell(
                     target,
-                    UnreconciledField::NoOp {
+                    FlatField::NoOp {
                         value: raw_row[target].clone(),
                     },
                 );
@@ -115,9 +115,9 @@ pub fn parse(
 
         for target in [STARTED_AT, FINISHED_AT] {
             if metadata.contains_key(target) {
-                unreconciled.set_cell(
+                flat.set_cell(
                     target,
-                    UnreconciledField::NoOp {
+                    FlatField::NoOp {
                         value: metadata[target].to_string().trim_matches('"').to_string(),
                     },
                 );
@@ -131,9 +131,9 @@ pub fn parse(
             if let Value::Object(obj) = values {
                 for (header, value) in obj {
                     if header != "retired" {
-                        unreconciled.set_cell(
+                        flat.set_cell(
                             header,
-                            UnreconciledField::Same {
+                            FlatField::Same {
                                 value: value.to_string().trim_matches('"').to_string(),
                             },
                         );
@@ -143,10 +143,10 @@ pub fn parse(
         }
     }
 
-    Ok(unreconciled)
+    Ok(flat)
 }
 
-fn flatten_tasks(task: &Value, task_id: String, unreconciled: &mut Unreconciled) {
+fn flatten_tasks(task: &Value, task_id: String, flat: &mut Flat) {
     let task_id = get_task_id(task, task_id);
 
     if let Value::Object(obj) = task {
@@ -162,9 +162,9 @@ fn flatten_tasks(task: &Value, task_id: String, unreconciled: &mut Unreconciled)
                 .collect::<Vec<String>>()
                 .join(", ");
 
-            unreconciled.set_cell(
+            flat.set_cell(
                 &get_key(&field.task_label, task, task_id),
-                UnreconciledField::List {
+                FlatField::List {
                     values: field.values,
                     value: joined,
                 },
@@ -175,7 +175,7 @@ fn flatten_tasks(task: &Value, task_id: String, unreconciled: &mut Unreconciled)
                 Value::Array(subtasks) => {
                     for subtask in subtasks {
                         task_id = get_task_id(subtask, task_id);
-                        flatten_tasks(subtask, task_id.clone(), unreconciled);
+                        flatten_tasks(subtask, task_id.clone(), flat);
                     }
                 }
                 _ => panic!("Expected a list: {:?}", task),
@@ -188,9 +188,9 @@ fn flatten_tasks(task: &Value, task_id: String, unreconciled: &mut Unreconciled)
                 Some(v) => v,
                 None => String::from(""),
             };
-            unreconciled.set_cell(
+            flat.set_cell(
                 &get_key(&field.select_label, task, task_id),
-                UnreconciledField::Select { value },
+                FlatField::Select { value },
             );
         } else if obj.contains_key("task_label") {
             let field: TextField =
@@ -200,17 +200,17 @@ fn flatten_tasks(task: &Value, task_id: String, unreconciled: &mut Unreconciled)
                 Some(v) => v,
                 None => String::from(""),
             };
-            unreconciled.set_cell(
+            flat.set_cell(
                 &get_key(&field.task_label, task, task_id),
-                UnreconciledField::Text { value },
+                FlatField::Text { value },
             );
         } else if obj.contains_key("tool_label") && obj.contains_key("width") {
             let field: BoxField =
                 serde_json::from_value(task.clone()).expect("Could not parse a box field");
 
-            unreconciled.set_cell(
+            flat.set_cell(
                 &get_key(&field.tool_label, task, task_id),
-                UnreconciledField::Box_ {
+                FlatField::Box_ {
                     left: field.x.round(),
                     top: field.y.round(),
                     right: (field.x + field.width).round(),
@@ -221,9 +221,9 @@ fn flatten_tasks(task: &Value, task_id: String, unreconciled: &mut Unreconciled)
             let field: LengthField =
                 serde_json::from_value(task.clone()).expect("Could not parse a length field");
 
-            unreconciled.set_cell(
+            flat.set_cell(
                 &get_key(&field.tool_label, task, task_id),
-                UnreconciledField::Length {
+                FlatField::Length {
                     x1: field.x1.round(),
                     y1: field.y1.round(),
                     x2: field.x2.round(),
@@ -234,9 +234,9 @@ fn flatten_tasks(task: &Value, task_id: String, unreconciled: &mut Unreconciled)
             let field: PointField =
                 serde_json::from_value(task.clone()).expect("Could not parse a point field");
 
-            unreconciled.set_cell(
+            flat.set_cell(
                 &get_key(&field.tool_label, task, task_id),
-                UnreconciledField::Point {
+                FlatField::Point {
                     x: field.x.round(),
                     y: field.y.round(),
                 },

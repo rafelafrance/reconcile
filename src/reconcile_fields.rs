@@ -1,11 +1,11 @@
-use crate::reconciled::{ReconciledCell, ReconciledField, ReconciledFlag};
-use crate::unreconciled::UnreconciledField;
+use crate::flat::FlatField;
+use crate::reconcile::{ReconciledCell, ReconciledField, ReconciledFlag};
 use lazy_static::lazy_static;
 use pluralizer::pluralize;
 use regex::Regex;
 use std::collections::BTreeSet;
 
-pub fn reconcile_boxes(fields: Vec<&UnreconciledField>) -> ReconciledCell {
+pub fn reconcile_boxes(fields: Vec<&FlatField>) -> ReconciledCell {
     let mut sums = (0.0, 0.0, 0.0, 0.0); // Temp buffer for calculations
     let mut notes = "There are no box records".to_string();
     let mut flag = ReconciledFlag::Empty;
@@ -13,7 +13,7 @@ pub fn reconcile_boxes(fields: Vec<&UnreconciledField>) -> ReconciledCell {
 
     // Accumulate the box edges
     fields.iter().for_each(|field| {
-        if let UnreconciledField::Box_ {
+        if let FlatField::Box_ {
             left,
             top,
             right,
@@ -58,7 +58,7 @@ pub fn reconcile_boxes(fields: Vec<&UnreconciledField>) -> ReconciledCell {
     }
 }
 
-pub fn reconcile_lengths(fields: Vec<&UnreconciledField>, header: &str) -> ReconciledCell {
+pub fn reconcile_lengths(fields: Vec<&FlatField>, header: &str) -> ReconciledCell {
     let mut pixel_length: f32 = 0.0;
     let mut factor: f32 = 0.0;
     let mut units: String = "".to_string();
@@ -74,7 +74,7 @@ pub fn reconcile_lengths(fields: Vec<&UnreconciledField>, header: &str) -> Recon
 
     // Accumulate the lengths
     fields.iter().for_each(|field| {
-        if let UnreconciledField::Length { x1, y1, x2, y2 } = field {
+        if let FlatField::Length { x1, y1, x2, y2 } = field {
             count += 1;
             pixel_length += ((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)).sqrt();
         };
@@ -118,7 +118,7 @@ pub fn reconcile_lengths(fields: Vec<&UnreconciledField>, header: &str) -> Recon
     ReconciledCell { flag, notes, field }
 }
 
-pub fn reconcile_points(fields: Vec<&UnreconciledField>) -> ReconciledCell {
+pub fn reconcile_points(fields: Vec<&FlatField>) -> ReconciledCell {
     let mut sums = (0.0, 0.0); // Temp buffer for calculations
     let mut notes = "There are no point records".to_string();
     let mut flag = ReconciledFlag::Empty;
@@ -126,7 +126,7 @@ pub fn reconcile_points(fields: Vec<&UnreconciledField>) -> ReconciledCell {
 
     // Accumulate the point coordinates
     fields.iter().for_each(|field| {
-        if let UnreconciledField::Point { x, y } = field {
+        if let FlatField::Point { x, y } = field {
             count += 1;
             sums.0 += x;
             sums.1 += y;
@@ -159,24 +159,22 @@ pub fn reconcile_points(fields: Vec<&UnreconciledField>) -> ReconciledCell {
     }
 }
 
-pub fn reconcile_same(fields: Vec<&UnreconciledField>) -> ReconciledCell {
+pub fn reconcile_same(fields: Vec<&FlatField>) -> ReconciledCell {
     let mut notes = "".to_string();
     let mut flag = ReconciledFlag::Ok;
     let mut values: BTreeSet<&String> = BTreeSet::new();
     let mut value = "".to_string();
-    let mut count = 0;
 
     fields.iter().for_each(|field| {
-        if let UnreconciledField::Same { value } = field {
-            count += 1;
+        if let FlatField::Same { value } = field {
             values.insert(value);
         }
     });
 
-    if count == 0 {
+    if values.len() == 0 {
         flag = ReconciledFlag::Empty;
         notes = "There are no records".to_string();
-    } else if count > 1 {
+    } else if values.len() > 1 {
         flag = ReconciledFlag::Error;
         let joined: String = values
             .iter()
@@ -193,5 +191,25 @@ pub fn reconcile_same(fields: Vec<&UnreconciledField>) -> ReconciledCell {
         flag,
         notes,
         field: ReconciledField::Same { value },
+    }
+}
+
+pub fn reconcile_select(fields: Vec<&FlatField>) -> ReconciledCell {
+    let mut notes = "".to_string();
+    let mut flag = ReconciledFlag::Ok;
+    let mut values: BTreeSet<&String> = BTreeSet::new();
+
+    // Nobody chose a value
+    // Top values are tied
+    // We have a winner
+    // Only one person chose a value
+    // Everyone chose a different value
+
+    ReconciledCell {
+        flag,
+        notes,
+        field: ReconciledField::Select {
+            value: "".to_string(),
+        },
     }
 }

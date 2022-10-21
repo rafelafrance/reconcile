@@ -1,7 +1,5 @@
+use crate::flat::{group_rows, Flat, FlatField, FlatGrouped, FlatNames};
 use crate::reconcile_fields;
-use crate::unreconciled::{
-    group_rows, Unreconciled, UnreconciledField, UnreconciledGrouped, UnreconciledNames,
-};
 
 #[derive(Debug)]
 pub enum ReconciledField {
@@ -72,52 +70,50 @@ pub struct Reconciled {
 }
 
 impl Reconciled {
-    pub fn new(unreconciled: &Unreconciled) -> Self {
+    pub fn new(flat: &Flat) -> Self {
         Reconciled {
-            workflow_id: unreconciled.workflow_id.to_string(),
-            workflow_name: unreconciled.workflow_name.to_string(),
+            workflow_id: flat.workflow_id.to_string(),
+            workflow_name: flat.workflow_name.to_string(),
             names: Vec::new(),
             rows: Vec::new(),
         }
     }
 }
 
-pub fn reconcile(unreconciled: &Unreconciled) -> Reconciled {
-    let reconciled = Reconciled::new(unreconciled);
-    let grouped: UnreconciledGrouped = group_rows(unreconciled);
-    let columns = order_columns(&unreconciled.names);
+pub fn reconcile(flat: &Flat) -> Reconciled {
+    let reconciled = Reconciled::new(flat);
+    let grouped: FlatGrouped = group_rows(flat);
+    let columns = order_columns(&flat.names);
 
     grouped.iter().for_each(|(_, rows)| {
         let mut rec_row: ReconciledRow = Vec::new();
 
         columns.iter().for_each(|col| {
-            let mut fields: Vec<&UnreconciledField> = Vec::new();
+            let mut fields: Vec<&FlatField> = Vec::new();
             rows.iter().for_each(|row| {
                 fields.push(&row[col.0]);
             });
 
             match &col.2 {
-                UnreconciledField::Box_ {
+                FlatField::Box_ {
                     left: _,
                     top: _,
                     right: _,
                     bottom: _,
                 } => {
                     let rec_field = reconcile_fields::reconcile_boxes(fields);
-                    println!("{:?} {}", rec_field, col.1);
                     rec_row.push(rec_field);
                 }
-                UnreconciledField::Length {
+                FlatField::Length {
                     x1: _,
                     y1: _,
                     x2: _,
                     y2: _,
                 } => {
                     let rec_field = reconcile_fields::reconcile_lengths(fields, &col.1);
-                    println!("{:?} {}", rec_field, col.1);
                     rec_row.push(rec_field);
                 }
-                UnreconciledField::List {
+                FlatField::List {
                     values: _,
                     value: _,
                 } => {
@@ -126,7 +122,7 @@ pub fn reconcile(unreconciled: &Unreconciled) -> Reconciled {
                     println!("{:?}", fields);
                     // rec_row.push(rec_field);
                 }
-                UnreconciledField::NoOp { value: _ } => {
+                FlatField::NoOp { value: _ } => {
                     let rec_field = ReconciledCell {
                         flag: ReconciledFlag::Ok,
                         notes: "".to_string(),
@@ -134,24 +130,21 @@ pub fn reconcile(unreconciled: &Unreconciled) -> Reconciled {
                             value: "".to_string(),
                         },
                     };
-                    println!("{:?} {}", rec_field, col.1);
                     rec_row.push(rec_field);
                 }
-                UnreconciledField::Point { x: _, y: _ } => {
+                FlatField::Point { x: _, y: _ } => {
                     let rec_field = reconcile_fields::reconcile_points(fields);
-                    println!("{:?} {}", rec_field, col.1);
                     rec_row.push(rec_field);
                 }
-                UnreconciledField::Same { value: _ } => {
+                FlatField::Same { value: _ } => {
                     let rec_field = reconcile_fields::reconcile_same(fields);
-                    println!("{:?} {}", rec_field, col.1);
                     rec_row.push(rec_field);
                 }
-                UnreconciledField::Select { value: _ } => {
+                FlatField::Select { value: _ } => {
                     ////////////////////////////////////////////////////////////////////////// TODO
                     println!("{:?}", fields);
                 }
-                UnreconciledField::Text { value: _ } => {
+                FlatField::Text { value: _ } => {
                     ////////////////////////////////////////////////////////////////////////// TODO
                     println!("{:?}", fields);
                 }
@@ -162,8 +155,8 @@ pub fn reconcile(unreconciled: &Unreconciled) -> Reconciled {
     reconciled
 }
 
-fn order_columns(names: &UnreconciledNames) -> Vec<(usize, String, UnreconciledField)> {
-    let mut columns: Vec<(usize, String, UnreconciledField)> = Vec::new();
+fn order_columns(names: &FlatNames) -> Vec<(usize, String, FlatField)> {
+    let mut columns: Vec<(usize, String, FlatField)> = Vec::new();
     names.iter().for_each(|(k, v)| {
         columns.push((v.0, k.clone(), v.1.clone()));
     });
