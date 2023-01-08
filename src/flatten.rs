@@ -154,7 +154,6 @@ fn flatten_tasks(task: &Value, task_id: String, flat_row: &mut FlatRow) {
         if obj.contains_key("value") && obj["value"].is_array() && obj["value"][0].is_string() {
             let mut field: ListField =
                 serde_json::from_value(task.clone()).expect("Could not parse a list field");
-
             field.values.sort();
             let joined = field
                 .values
