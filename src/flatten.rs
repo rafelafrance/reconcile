@@ -78,10 +78,10 @@ pub fn flatten(
         let raw_row: HashMap<String, String> =
             deserialized_row.expect("Could not parse a row in the classifications CSV file");
 
-        let flat_row: FlatRow;
+        let mut flat_row: FlatRow = Vec::new();
 
         flat_row.push((
-            SUBJECT_ID,
+            SUBJECT_ID.to_string(),
             FlatField::Same {
                 value: raw_row[SUBJECT_IDS].clone(),
             },
@@ -102,7 +102,7 @@ pub fn flatten(
         for target in targets {
             if raw_row.contains_key(target) {
                 flat_row.push((
-                    target,
+                    target.to_string(),
                     FlatField::NoOp {
                         value: raw_row[target].clone(),
                     },
@@ -116,7 +116,7 @@ pub fn flatten(
         for target in [STARTED_AT, FINISHED_AT] {
             if metadata.contains_key(target) {
                 flat_row.push((
-                    target,
+                    target.to_string(),
                     FlatField::NoOp {
                         value: metadata[target].to_string().trim_matches('"').to_string(),
                     },
@@ -132,7 +132,7 @@ pub fn flatten(
                 for (header, value) in obj {
                     if header != "retired" {
                         flat_row.push((
-                            header,
+                            header.to_string(),
                             FlatField::Same {
                                 value: value.to_string().trim_matches('"').to_string(),
                             },
@@ -163,7 +163,7 @@ fn flatten_tasks(task: &Value, task_id: String, flat_row: &mut FlatRow) {
                 .join(", ");
 
             flat_row.push((
-                &get_key(&field.task_label, task, task_id),
+                get_key(&field.task_label, task, task_id),
                 FlatField::List {
                     values: field.values,
                     value: joined,
@@ -189,7 +189,7 @@ fn flatten_tasks(task: &Value, task_id: String, flat_row: &mut FlatRow) {
                 None => String::from(""),
             };
             flat_row.push((
-                &get_key(&field.select_label, task, task_id),
+                get_key(&field.select_label, task, task_id),
                 FlatField::Select { value },
             ));
         } else if obj.contains_key("task_label") {
@@ -201,7 +201,7 @@ fn flatten_tasks(task: &Value, task_id: String, flat_row: &mut FlatRow) {
                 None => String::from(""),
             };
             flat_row.push((
-                &get_key(&field.task_label, task, task_id),
+                get_key(&field.task_label, task, task_id),
                 FlatField::Text { value },
             ));
         } else if obj.contains_key("tool_label") && obj.contains_key("width") {
@@ -209,7 +209,7 @@ fn flatten_tasks(task: &Value, task_id: String, flat_row: &mut FlatRow) {
                 serde_json::from_value(task.clone()).expect("Could not parse a box field");
 
             flat_row.push((
-                &get_key(&field.tool_label, task, task_id),
+                get_key(&field.tool_label, task, task_id),
                 FlatField::Box_ {
                     left: field.x.round(),
                     top: field.y.round(),
@@ -222,7 +222,7 @@ fn flatten_tasks(task: &Value, task_id: String, flat_row: &mut FlatRow) {
                 serde_json::from_value(task.clone()).expect("Could not parse a length field");
 
             flat_row.push((
-                &get_key(&field.tool_label, task, task_id),
+                get_key(&field.tool_label, task, task_id),
                 FlatField::Length {
                     x1: field.x1.round(),
                     y1: field.y1.round(),
@@ -235,7 +235,7 @@ fn flatten_tasks(task: &Value, task_id: String, flat_row: &mut FlatRow) {
                 serde_json::from_value(task.clone()).expect("Could not parse a point field");
 
             flat_row.push((
-                &get_key(&field.tool_label, task, task_id),
+                get_key(&field.tool_label, task, task_id),
                 FlatField::Point {
                     x: field.x.round(),
                     y: field.y.round(),
@@ -247,7 +247,7 @@ fn flatten_tasks(task: &Value, task_id: String, flat_row: &mut FlatRow) {
     };
 }
 
-fn get_key(label: &String, task: &Value, task_id: String) -> String {
+fn get_key(label: &str, task: &Value, task_id: String) -> String {
     format!("{}: {}", get_task_id(task, task_id), label)
 }
 

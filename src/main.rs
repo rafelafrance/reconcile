@@ -4,8 +4,8 @@ pub mod reconcile;
 pub mod reconcile_fields;
 
 use clap::Parser;
-use flat::write_flattened;
-use reconcile::reconcile;
+// use flat::write_flattened;
+// use reconcile::reconcile;
 use std::error::Error;
 use std::path::PathBuf;
 
@@ -47,15 +47,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let args = Cli::parse();
 
-    let mut flattened = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
+    // let mut flattened = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
+    let _ = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
 
-    if let Option::Some(flat_csv) = args.flattened_csv {
-        _ = write_flattened(&flat_csv, &mut flattened);
-    }
-
-    if let Option::Some(_reconciled_csv) = args.reconciled_csv {
-        let _rec = reconcile(&flattened);
-    }
+    // if let Option::Some(flat_csv) = args.flattened_csv {
+    //     _ = write_flattened(&flat_csv, &mut flattened);
+    // }
+    //
+    // if let Option::Some(_reconciled_csv) = args.reconciled_csv {
+    //     let _rec = reconcile(&flattened);
+    // }
 
     Ok(())
 }

@@ -40,7 +40,7 @@ pub enum FlatField {
     },
 }
 
-pub type FlatRow<'a> = Vec<(&'a str, FlatField)>;
+pub type FlatRow = Vec<(String, FlatField)>;
 
 #[derive(Debug, Default)]
 pub struct Flat {
@@ -63,25 +63,43 @@ impl Flat {
     }
 
     pub fn add_row(&mut self, row: FlatRow) {
+        // TODO sort self.order!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // TODO Handle ragged rows!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         for (name, field) in row.iter() {
-            if !self.types.contains_key(name.clone()) {
+            if !self.types.contains_key(name) {
                 self.add_column(name, field);
             }
-            self.columns[name.clone()].push(field.clone());
+            let entry = self.columns.entry(name.to_string()).or_insert(Vec::new());
+            entry.push(field.clone());
+        }
+    }
+
+    fn add_column(&mut self, name: &str, field: &FlatField) {
+        self.order.push(name.to_string());
+        self.types.insert(name.to_string(), field.clone());
+        let len = self.len();
+        let entry = self.columns.entry(name.to_string()).or_insert(Vec::new());
+        entry.extend(iter::repeat(FlatField::Null).take(len));
+    }
+
+    fn len(&self) -> usize {
+        match self.order.first() {
+            Some(name) => self.columns[name].len(),
+            _ => 0,
         }
     }
 
     pub fn to_df(&self) -> DataFrame {
-        let columns: Vec<Series> = Vec::new();
+        let mut columns: Vec<Series> = Vec::new();
         columns.push(Series::new("a", &[1i32, 2, 3]));
         columns.push(Series::new("b", &[10i32, 20, 30]));
         for header in self.order.iter() {
             match self.types[header] {
                 FlatField::Box_ {
-                    left,
-                    top,
-                    right,
-                    bottom,
+                    left: _,
+                    top: _,
+                    right: _,
+                    bottom: _,
                 } => {
                     columns.push(Series::new(
                         &format!("{}: left", header),
@@ -90,9 +108,9 @@ impl Flat {
                             .map(|x| match x {
                                 FlatField::Box_ {
                                     left,
-                                    top,
-                                    right,
-                                    bottom,
+                                    top: _,
+                                    right: _,
+                                    bottom: _,
                                 } => Some(left.clone() as i32),
                                 _ => None,
                             })
@@ -104,10 +122,10 @@ impl Flat {
                             .iter()
                             .map(|x| match x {
                                 FlatField::Box_ {
-                                    left,
+                                    left: _,
                                     top,
-                                    right,
-                                    bottom,
+                                    right: _,
+                                    bottom: _,
                                 } => Some(top.clone() as i32),
                                 _ => None,
                             })
@@ -119,10 +137,10 @@ impl Flat {
                             .iter()
                             .map(|x| match x {
                                 FlatField::Box_ {
-                                    left,
-                                    top,
+                                    left: _,
+                                    top: _,
                                     right,
-                                    bottom,
+                                    bottom: _,
                                 } => Some(right.clone() as i32),
                                 _ => None,
                             })
@@ -134,9 +152,9 @@ impl Flat {
                             .iter()
                             .map(|x| match x {
                                 FlatField::Box_ {
-                                    left,
-                                    top,
-                                    right,
+                                    left: _,
+                                    top: _,
+                                    right: _,
                                     bottom,
                                 } => Some(bottom.clone() as i32),
                                 _ => None,
@@ -144,13 +162,23 @@ impl Flat {
                             .collect::<Vec<Option<i32>>>(),
                     ));
                 }
-                FlatField::Length { x1, y1, x2, y2 } => {
+                FlatField::Length {
+                    x1: _,
+                    y1: _,
+                    x2: _,
+                    y2: _,
+                } => {
                     columns.push(Series::new(
                         &format!("{}: x1", header),
                         self.columns[header]
                             .iter()
                             .map(|x| match x {
-                                FlatField::Length { x1, y1, x2, y2 } => Some(x1.clone() as i32),
+                                FlatField::Length {
+                                    x1,
+                                    y1: _,
+                                    x2: _,
+                                    y2: _,
+                                } => Some(x1.clone() as i32),
                                 _ => None,
                             })
                             .collect::<Vec<Option<i32>>>(),
@@ -160,7 +188,12 @@ impl Flat {
                         self.columns[header]
                             .iter()
                             .map(|x| match x {
-                                FlatField::Length { x1, y1, x2, y2 } => Some(y1.clone() as i32),
+                                FlatField::Length {
+                                    x1: _,
+                                    y1,
+                                    x2: _,
+                                    y2: _,
+                                } => Some(y1.clone() as i32),
                                 _ => None,
                             })
                             .collect::<Vec<Option<i32>>>(),
@@ -170,7 +203,12 @@ impl Flat {
                         self.columns[header]
                             .iter()
                             .map(|x| match x {
-                                FlatField::Length { x1, y1, x2, y2 } => Some(x2.clone() as i32),
+                                FlatField::Length {
+                                    x1: _,
+                                    y1: _,
+                                    x2,
+                                    y2: _,
+                                } => Some(x2.clone() as i32),
                                 _ => None,
                             })
                             .collect::<Vec<Option<i32>>>(),
@@ -180,25 +218,33 @@ impl Flat {
                         self.columns[header]
                             .iter()
                             .map(|x| match x {
-                                FlatField::Length { x1, y1, x2, y2 } => Some(y2.clone() as i32),
+                                FlatField::Length {
+                                    x1: _,
+                                    y1: _,
+                                    x2: _,
+                                    y2,
+                                } => Some(y2.clone() as i32),
                                 _ => None,
                             })
                             .collect::<Vec<Option<i32>>>(),
                     ));
                 }
-                FlatField::List { values, value } => {
+                FlatField::List {
+                    values: _,
+                    value: _,
+                } => {
                     columns.push(Series::new(
                         &format!("{}", header),
                         self.columns[header]
                             .iter()
                             .map(|x| match x {
-                                FlatField::List { values, value } => Some(value.clone()),
+                                FlatField::List { values: _, value } => Some(value.clone()),
                                 _ => None,
                             })
                             .collect::<Vec<Option<String>>>(),
                     ));
                 }
-                FlatField::NoOp { value } => {
+                FlatField::NoOp { value: _ } => {
                     columns.push(Series::new(
                         &format!("{}", header),
                         self.columns[header]
@@ -210,13 +256,13 @@ impl Flat {
                             .collect::<Vec<Option<String>>>(),
                     ));
                 }
-                FlatField::Point { x, y } => {
+                FlatField::Point { x: _, y: _ } => {
                     columns.push(Series::new(
                         &format!("{}: x", header),
                         self.columns[header]
                             .iter()
                             .map(|x| match x {
-                                FlatField::Point { x, y } => Some(x.clone() as i32),
+                                FlatField::Point { x, y: _ } => Some(x.clone() as i32),
                                 _ => None,
                             })
                             .collect::<Vec<Option<i32>>>(),
@@ -226,7 +272,7 @@ impl Flat {
                         self.columns[header]
                             .iter()
                             .map(|x| match x {
-                                FlatField::Point { x, y } => Some(y.clone() as i32),
+                                FlatField::Point { x: _, y } => Some(y.clone() as i32),
                                 _ => None,
                             })
                             .collect::<Vec<Option<i32>>>(),
@@ -273,20 +319,5 @@ impl Flat {
         }
         let df = DataFrame::new(columns).unwrap();
         df
-    }
-
-    fn add_column(&mut self, name: &str, field: &FlatField) {
-        let name = name.to_owned();
-        self.order.push(name.clone());
-        self.types.insert(name, field.clone());
-        self.columns[&name] = Vec::new();
-        self.columns[&name].extend(iter::repeat(FlatField::Null).take(self.len()));
-    }
-
-    fn len(&self) -> usize {
-        match self.order.first() {
-            Some(name) => self.columns[name].len(),
-            _ => 0,
-        }
     }
 }
