@@ -141,7 +141,7 @@ pub fn flatten(
                 }
             }
         }
-        flat.rows.push(flat_row);
+        flat.add_row(flat_row);
     }
 
     Ok(flat)
