@@ -1,6 +1,6 @@
+use indexmap::IndexMap;
 use polars::prelude::*;
 use serde::Deserialize;
-use std::collections::HashMap;
 
 #[derive(Clone, Debug, Deserialize)]
 pub enum FlatField {
@@ -39,15 +39,14 @@ pub enum FlatField {
     },
 }
 
-pub type FlatRow = HashMap<String, FlatField>;
+pub type FlatRow = IndexMap<String, FlatField>;
 
 #[derive(Debug, Default)]
 pub struct Flat {
     pub workflow_id: String,
     pub workflow_name: String,
-    columns: HashMap<String, Vec<FlatField>>,
-    order: Vec<String>,
-    types: HashMap<String, FlatField>,
+    columns: IndexMap<String, Vec<FlatField>>,
+    types: IndexMap<String, FlatField>,
     row_count: usize,
 }
 
@@ -56,25 +55,23 @@ impl Flat {
         Flat {
             workflow_id: workflow_id.to_string(),
             workflow_name: workflow_name.to_string(),
-            columns: HashMap::new(),
-            order: Vec::new(),
-            types: HashMap::new(),
+            columns: IndexMap::new(),
+            types: IndexMap::new(),
             row_count: 0,
         }
     }
 
     pub fn add_row(&mut self, row: FlatRow) {
-        for (name, field) in row.iter() {
-            if !self.order.contains(name) {
-                self.order.push(name.to_string());
-                self.types.insert(name.to_string(), field.clone());
+        for (header, field) in row.iter() {
+            if !self.columns.contains_key(header) {
+                self.types.insert(header.to_string(), field.clone());
             }
-            let entry = self.columns.entry(name.to_string()).or_insert(Vec::new());
+            let entry = self.columns.entry(header.to_string()).or_insert(Vec::new());
             entry.push(field.clone());
         }
-        for name in &self.order {
-            if !row.contains_key(name) {
-                self.columns.get_mut(name).unwrap().push(FlatField::Null);
+        for (header, _) in self.types.iter() {
+            if !row.contains_key(header) {
+                self.columns.get_mut(header).unwrap().push(FlatField::Null);
             }
         }
         self.row_count += 1;
@@ -82,8 +79,8 @@ impl Flat {
 
     pub fn to_df(&self) -> DataFrame {
         let mut columns: Vec<Series> = Vec::new();
-        for header in self.order.iter() {
-            match self.types[header] {
+        for (header, field_type) in self.types.iter() {
+            match field_type {
                 FlatField::Box_ {
                     left: _,
                     top: _,

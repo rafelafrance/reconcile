@@ -1,4 +1,5 @@
 use crate::flat::{Flat, FlatField, FlatRow};
+use indexmap::IndexMap;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -78,7 +79,7 @@ pub fn flatten(
         let raw_row: HashMap<String, String> =
             deserialized_row.expect("Could not parse a row in the classifications CSV file");
 
-        let mut flat_row: FlatRow = HashMap::new();
+        let mut flat_row: FlatRow = IndexMap::new();
 
         flat_row.insert(
             SUBJECT_ID.to_string(),
