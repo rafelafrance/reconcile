@@ -48,7 +48,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
 
     // let mut flattened = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
-    let _ = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
+    let flattened = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
+    _ = flattened.to_df();
 
     // if let Option::Some(flat_csv) = args.flattened_csv {
     //     _ = write_flattened(&flat_csv, &mut flattened);
