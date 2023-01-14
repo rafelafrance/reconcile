@@ -2,6 +2,8 @@ use indexmap::IndexMap;
 use polars::prelude::*;
 use serde::Deserialize;
 
+pub const SUBJECT_ID: &str = "subject_id";
+
 #[derive(Clone, Debug, Deserialize)]
 pub enum FlatField {
     Null,
@@ -303,7 +305,8 @@ impl Flat {
                 FlatField::Null => {}
             }
         }
-        let df = DataFrame::new(columns).unwrap();
+        let mut df = DataFrame::new(columns).unwrap();
+        df.sort_in_place(&[SUBJECT_ID], vec![false]).unwrap();
         df
     }
 }
