@@ -50,6 +50,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let flattened = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
     let mut flat_df = flattened.to_df();
 
+    println!("{:?}", flat_df);
+
     if let Option::Some(flat_csv) = args.flattened_csv {
         let mut file = File::create(flat_csv).unwrap();
         CsvWriter::new(&mut file).finish(&mut flat_df).unwrap();

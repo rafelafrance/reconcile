@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use polars::prelude::*;
 use serde::Deserialize;
+use std::iter;
 
 pub const SUBJECT_ID: &str = "subject_id";
 
@@ -66,10 +67,11 @@ impl Flat {
     pub fn add_row(&mut self, row: FlatRow) {
         for (header, field) in row.iter() {
             if !self.columns.contains_key(header) {
+                self.columns.insert(header.to_string(), Vec::new());
+                self.columns[header].extend(iter::repeat(FlatField::Null).take(self.row_count));
                 self.types.insert(header.to_string(), field.clone());
             }
-            let entry = self.columns.entry(header.to_string()).or_insert(Vec::new());
-            entry.push(field.clone());
+            self.columns[header].push(field.clone());
         }
         for (header, _) in self.types.iter() {
             if !row.contains_key(header) {
@@ -89,66 +91,35 @@ impl Flat {
                     right: _,
                     bottom: _,
                 } => {
-                    columns.push(Series::new(
-                        &format!("{}: left", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Box_ {
-                                    left,
-                                    top: _,
-                                    right: _,
-                                    bottom: _,
-                                } => Some(left.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
-                    columns.push(Series::new(
-                        &format!("{}: top", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Box_ {
-                                    left: _,
-                                    top,
-                                    right: _,
-                                    bottom: _,
-                                } => Some(top.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
-                    columns.push(Series::new(
-                        &format!("{}: right", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Box_ {
-                                    left: _,
-                                    top: _,
-                                    right,
-                                    bottom: _,
-                                } => Some(right.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
-                    columns.push(Series::new(
-                        &format!("{}: bottom", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Box_ {
-                                    left: _,
-                                    top: _,
-                                    right: _,
-                                    bottom,
-                                } => Some(bottom.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
+                    let mut lefts: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    let mut tops: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    let mut rights: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    let mut bottoms: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    for value in self.columns[header].iter() {
+                        match value {
+                            FlatField::Box_ {
+                                left,
+                                top,
+                                right,
+                                bottom,
+                            } => {
+                                lefts.push(Some(left.clone() as i32));
+                                tops.push(Some(top.clone() as i32));
+                                rights.push(Some(right.clone() as i32));
+                                bottoms.push(Some(bottom.clone() as i32));
+                            }
+                            _ => {
+                                lefts.push(None);
+                                tops.push(None);
+                                rights.push(None);
+                                bottoms.push(None);
+                            }
+                        };
+                    }
+                    columns.push(Series::new(&format!("{}: left", header), lefts));
+                    columns.push(Series::new(&format!("{}: top", header), tops));
+                    columns.push(Series::new(&format!("{}: right", header), rights));
+                    columns.push(Series::new(&format!("{}: bottom", header), bottoms));
                 }
                 FlatField::Length {
                     x1: _,
@@ -156,66 +127,30 @@ impl Flat {
                     x2: _,
                     y2: _,
                 } => {
-                    columns.push(Series::new(
-                        &format!("{}: x1", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Length {
-                                    x1,
-                                    y1: _,
-                                    x2: _,
-                                    y2: _,
-                                } => Some(x1.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
-                    columns.push(Series::new(
-                        &format!("{}: y1", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Length {
-                                    x1: _,
-                                    y1,
-                                    x2: _,
-                                    y2: _,
-                                } => Some(y1.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
-                    columns.push(Series::new(
-                        &format!("{}: x2", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Length {
-                                    x1: _,
-                                    y1: _,
-                                    x2,
-                                    y2: _,
-                                } => Some(x2.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
-                    columns.push(Series::new(
-                        &format!("{}: y2", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Length {
-                                    x1: _,
-                                    y1: _,
-                                    x2: _,
-                                    y2,
-                                } => Some(y2.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
+                    let mut x1s: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    let mut y1s: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    let mut x2s: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    let mut y2s: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    for value in self.columns[header].iter() {
+                        match value {
+                            FlatField::Length { x1, y1, x2, y2 } => {
+                                x1s.push(Some(x1.clone() as i32));
+                                y1s.push(Some(y1.clone() as i32));
+                                x2s.push(Some(x2.clone() as i32));
+                                y2s.push(Some(y2.clone() as i32));
+                            }
+                            _ => {
+                                x1s.push(None);
+                                y1s.push(None);
+                                x2s.push(None);
+                                y2s.push(None);
+                            }
+                        };
+                    }
+                    columns.push(Series::new(&format!("{}: x1", header), x1s));
+                    columns.push(Series::new(&format!("{}: y1", header), y1s));
+                    columns.push(Series::new(&format!("{}: x2", header), x2s));
+                    columns.push(Series::new(&format!("{}: y2", header), y2s));
                 }
                 FlatField::List {
                     values: _,
@@ -245,26 +180,22 @@ impl Flat {
                     ));
                 }
                 FlatField::Point { x: _, y: _ } => {
-                    columns.push(Series::new(
-                        &format!("{}: x", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Point { x, y: _ } => Some(x.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
-                    columns.push(Series::new(
-                        &format!("{}: y", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Point { x: _, y } => Some(y.clone() as i32),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<i32>>>(),
-                    ));
+                    let mut xs: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    let mut ys: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
+                    for value in self.columns[header].iter() {
+                        match value {
+                            FlatField::Point { x, y } => {
+                                xs.push(Some(x.clone() as i32));
+                                ys.push(Some(y.clone() as i32));
+                            }
+                            _ => {
+                                xs.push(None);
+                                ys.push(None);
+                            }
+                        };
+                    }
+                    columns.push(Series::new(&format!("{}: x", header), xs));
+                    columns.push(Series::new(&format!("{}: y", header), ys));
                 }
                 FlatField::Same { value: _ } => {
                     columns.push(Series::new(
