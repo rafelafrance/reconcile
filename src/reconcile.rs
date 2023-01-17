@@ -1,7 +1,6 @@
-use crate::flat::Flat;
-use crate::flatten::SUBJECT_ID;
+// use crate::flat::Flat;
+// use crate::flatten::SUBJECT_ID;
 use indexmap::IndexMap;
-use polars::prelude::*;
 
 #[derive(Debug)]
 pub enum ReconciledFlag {
@@ -82,9 +81,9 @@ pub type ReconciledRow = IndexMap<String, ReconciledField>;
 pub struct Reconciled {
     pub workflow_id: String,
     pub workflow_name: String,
-    columns: IndexMap<String, Vec<ReconciledField>>,
-    types: IndexMap<String, ReconciledField>,
-    row_count: usize,
+    // columns: IndexMap<String, Vec<ReconciledField>>,
+    // types: IndexMap<String, ReconciledField>,
+    // row_count: usize,
 }
 
 impl Reconciled {
@@ -92,11 +91,11 @@ impl Reconciled {
         Reconciled {
             workflow_id: workflow_id.to_string(),
             workflow_name: workflow_name.to_string(),
-            columns: IndexMap::new(),
-            types: IndexMap::new(),
-            row_count: 0,
+            // columns: IndexMap::new(),
+            // types: IndexMap::new(),
+            // row_count: 0,
         }
     }
 
-    pub fn reconcile(&mut self, flat: &Flat) {}
+    // pub fn reconcile(&mut self, flat: &Flat) {}
 }

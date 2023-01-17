@@ -54,9 +54,7 @@ impl FlatRow {
     }
 
     pub fn add_field(&mut self, column: &str, field: &FlatField) {
-        unsafe {
-            self.row.insert(column.to_owned(), field.clone());
-        }
+        self.row.insert(column.to_owned(), field.clone());
     }
 }
 
@@ -93,7 +91,7 @@ impl Flat {
 
         _ = self.csv_header(&mut writer);
 
-        for (i, row) in self.rows.iter().enumerate() {
+        for row in self.rows.iter() {
             _ = self.csv_row(row, &mut writer);
         }
 
@@ -158,12 +156,12 @@ impl Flat {
     fn csv_row(&self, row: &FlatRow, writer: &mut Writer<File>) -> Result<(), Box<dyn Error>> {
         let mut output: Vec<String> = Vec::new();
 
-        for (header, field_type) in self.columns.iter() {
+        for (header, _) in self.columns.iter() {
             if !row.row.contains_key(header) {
                 output.push("".to_string());
             } else {
-                let field: FlatField = row.row[header];
-                match field_type {
+                let field: &FlatField = row.row.get(header).unwrap();
+                match field {
                     FlatField::Box_ {
                         left,
                         top,
