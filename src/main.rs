@@ -4,9 +4,7 @@ pub mod reconcile;
 pub mod reconcile_fields;
 
 use clap::Parser;
-use polars::prelude::*;
 use std::error::Error;
-use std::fs::File;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -47,14 +45,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let args = Cli::parse();
 
-    let flattened = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
-    let mut flat_df = flattened.to_df();
-
-    println!("{:?}", flat_df);
+    let flat = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
 
     if let Option::Some(flat_csv) = args.flattened_csv {
-        let mut file = File::create(flat_csv).unwrap();
-        CsvWriter::new(&mut file).finish(&mut flat_df).unwrap();
+        _ = flat.write_csv(&flat_csv);
     }
 
     // if let Option::Some(_reconciled_csv) = args.reconciled_csv {

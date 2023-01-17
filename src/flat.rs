@@ -1,13 +1,12 @@
+// use crate::flatten::SUBJECT_ID;
+use csv::Writer;
 use indexmap::IndexMap;
-use polars::prelude::*;
-use serde::Deserialize;
-use std::iter;
+use std::error::Error;
+use std::fs::File;
+use std::path::Path;
 
-pub const SUBJECT_ID: &str = "subject_id";
-
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum FlatField {
-    Null,
     Box_ {
         left: f32,
         top: f32,
@@ -42,15 +41,31 @@ pub enum FlatField {
     },
 }
 
-pub type FlatRow = IndexMap<String, FlatField>;
+#[derive(Debug)]
+pub struct FlatRow {
+    pub row: IndexMap<String, FlatField>,
+}
 
-#[derive(Debug, Default)]
+impl FlatRow {
+    pub fn new() -> Self {
+        FlatRow {
+            row: IndexMap::new(),
+        }
+    }
+
+    pub fn add_field(&mut self, column: &str, field: &FlatField) {
+        unsafe {
+            self.row.insert(column.to_owned(), field.clone());
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Flat {
     pub workflow_id: String,
     pub workflow_name: String,
-    columns: IndexMap<String, Vec<FlatField>>,
-    types: IndexMap<String, FlatField>,
-    row_count: usize,
+    columns: IndexMap<String, FlatField>,
+    rows: Vec<FlatRow>,
 }
 
 impl Flat {
@@ -59,67 +74,47 @@ impl Flat {
             workflow_id: workflow_id.to_string(),
             workflow_name: workflow_name.to_string(),
             columns: IndexMap::new(),
-            types: IndexMap::new(),
-            row_count: 0,
+            rows: Vec::new(),
         }
     }
 
     pub fn add_row(&mut self, row: FlatRow) {
-        for (header, field) in row.iter() {
-            if !self.columns.contains_key(header) {
-                self.columns.insert(header.to_string(), Vec::new());
-                self.columns[header].extend(iter::repeat(FlatField::Null).take(self.row_count));
-                self.types.insert(header.to_string(), field.clone());
-            }
-            self.columns[header].push(field.clone());
-        }
-        for (header, _) in self.types.iter() {
-            if !row.contains_key(header) {
-                self.columns.get_mut(header).unwrap().push(FlatField::Null);
+        for (column, field) in row.row.iter() {
+            if !self.columns.contains_key(column) {
+                self.columns.insert(column.to_owned(), field.clone());
             }
         }
-        self.row_count += 1;
+        self.rows.push(row);
     }
 
-    pub fn to_df(&self) -> DataFrame {
-        let mut columns: Vec<Series> = Vec::new();
-        for (header, field_type) in self.types.iter() {
-            match field_type {
+    pub fn write_csv(&self, csv_path: &Path) -> Result<(), Box<dyn Error>> {
+        let mut writer =
+            Writer::from_path(csv_path).expect("Could not open the unreconciled CSV file");
+
+        _ = self.csv_header(&mut writer);
+
+        for (i, row) in self.rows.iter().enumerate() {
+            _ = self.csv_row(row, &mut writer);
+        }
+
+        Ok(())
+    }
+
+    fn csv_header(&self, writer: &mut Writer<File>) -> Result<(), Box<dyn Error>> {
+        let mut output: Vec<String> = Vec::new();
+
+        for (column, field_type) in self.columns.iter() {
+            match &field_type {
                 FlatField::Box_ {
                     left: _,
                     top: _,
                     right: _,
                     bottom: _,
                 } => {
-                    let mut lefts: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    let mut tops: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    let mut rights: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    let mut bottoms: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    for value in self.columns[header].iter() {
-                        match value {
-                            FlatField::Box_ {
-                                left,
-                                top,
-                                right,
-                                bottom,
-                            } => {
-                                lefts.push(Some(left.clone() as i32));
-                                tops.push(Some(top.clone() as i32));
-                                rights.push(Some(right.clone() as i32));
-                                bottoms.push(Some(bottom.clone() as i32));
-                            }
-                            _ => {
-                                lefts.push(None);
-                                tops.push(None);
-                                rights.push(None);
-                                bottoms.push(None);
-                            }
-                        };
-                    }
-                    columns.push(Series::new(&format!("{}: left", header), lefts));
-                    columns.push(Series::new(&format!("{}: top", header), tops));
-                    columns.push(Series::new(&format!("{}: right", header), rights));
-                    columns.push(Series::new(&format!("{}: bottom", header), bottoms));
+                    output.push(format!("{}: left", column));
+                    output.push(format!("{}: top", column));
+                    output.push(format!("{}: right", column));
+                    output.push(format!("{}: bottom", column));
                 }
                 FlatField::Length {
                     x1: _,
@@ -127,117 +122,88 @@ impl Flat {
                     x2: _,
                     y2: _,
                 } => {
-                    let mut x1s: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    let mut y1s: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    let mut x2s: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    let mut y2s: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    for value in self.columns[header].iter() {
-                        match value {
-                            FlatField::Length { x1, y1, x2, y2 } => {
-                                x1s.push(Some(x1.clone() as i32));
-                                y1s.push(Some(y1.clone() as i32));
-                                x2s.push(Some(x2.clone() as i32));
-                                y2s.push(Some(y2.clone() as i32));
-                            }
-                            _ => {
-                                x1s.push(None);
-                                y1s.push(None);
-                                x2s.push(None);
-                                y2s.push(None);
-                            }
-                        };
-                    }
-                    columns.push(Series::new(&format!("{}: x1", header), x1s));
-                    columns.push(Series::new(&format!("{}: y1", header), y1s));
-                    columns.push(Series::new(&format!("{}: x2", header), x2s));
-                    columns.push(Series::new(&format!("{}: y2", header), y2s));
+                    output.push(format!("{}: x1", column));
+                    output.push(format!("{}: y1", column));
+                    output.push(format!("{}: x2", column));
+                    output.push(format!("{}: y2", column));
                 }
                 FlatField::List {
                     values: _,
                     value: _,
                 } => {
-                    columns.push(Series::new(
-                        &format!("{}", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::List { values: _, value } => Some(value.clone()),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<String>>>(),
-                    ));
+                    output.push(column.to_string());
                 }
                 FlatField::NoOp { value: _ } => {
-                    columns.push(Series::new(
-                        &format!("{}", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::NoOp { value } => Some(value.clone()),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<String>>>(),
-                    ));
+                    output.push(column.to_string());
                 }
                 FlatField::Point { x: _, y: _ } => {
-                    let mut xs: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    let mut ys: Vec<Option<i32>> = Vec::with_capacity(self.row_count);
-                    for value in self.columns[header].iter() {
-                        match value {
-                            FlatField::Point { x, y } => {
-                                xs.push(Some(x.clone() as i32));
-                                ys.push(Some(y.clone() as i32));
-                            }
-                            _ => {
-                                xs.push(None);
-                                ys.push(None);
-                            }
-                        };
-                    }
-                    columns.push(Series::new(&format!("{}: x", header), xs));
-                    columns.push(Series::new(&format!("{}: y", header), ys));
+                    output.push(format!("{}: x", column));
+                    output.push(format!("{}: y", column));
                 }
                 FlatField::Same { value: _ } => {
-                    columns.push(Series::new(
-                        &format!("{}", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Same { value } => Some(value.clone()),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<String>>>(),
-                    ));
+                    output.push(column.to_string());
                 }
                 FlatField::Select { value: _ } => {
-                    columns.push(Series::new(
-                        &format!("{}", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Select { value } => Some(value.clone()),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<String>>>(),
-                    ));
+                    output.push(column.to_string());
                 }
                 FlatField::Text { value: _ } => {
-                    columns.push(Series::new(
-                        &format!("{}", header),
-                        self.columns[header]
-                            .iter()
-                            .map(|x| match x {
-                                FlatField::Text { value } => Some(value.clone()),
-                                _ => None,
-                            })
-                            .collect::<Vec<Option<String>>>(),
-                    ));
+                    output.push(column.to_string());
                 }
-                FlatField::Null => {}
             }
         }
-        let mut df = DataFrame::new(columns).unwrap();
-        df.sort_in_place(&[SUBJECT_ID], vec![false]).unwrap();
-        df
+        writer.write_record(output)?;
+        Ok(())
+    }
+
+    fn csv_row(&self, row: &FlatRow, writer: &mut Writer<File>) -> Result<(), Box<dyn Error>> {
+        let mut output: Vec<String> = Vec::new();
+
+        for (header, field_type) in self.columns.iter() {
+            if !row.row.contains_key(header) {
+                output.push("".to_string());
+            } else {
+                let field: FlatField = row.row[header];
+                match field_type {
+                    FlatField::Box_ {
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    } => {
+                        output.push(format!("{}", left.round()));
+                        output.push(format!("{}", top.round()));
+                        output.push(format!("{}", right.round()));
+                        output.push(format!("{}", bottom.round()));
+                    }
+                    FlatField::Length { x1, y1, x2, y2 } => {
+                        output.push(format!("{}", x1.round()));
+                        output.push(format!("{}", y1.round()));
+                        output.push(format!("{}", x2.round()));
+                        output.push(format!("{}", y2.round()));
+                    }
+                    FlatField::List { values: _, value } => {
+                        output.push(value.clone());
+                    }
+                    FlatField::NoOp { value } => {
+                        output.push(value.clone());
+                    }
+                    FlatField::Point { x, y } => {
+                        output.push(format!("{}", x.round()));
+                        output.push(format!("{}", y.round()));
+                    }
+                    FlatField::Same { value } => {
+                        output.push(value.clone());
+                    }
+                    FlatField::Select { value } => {
+                        output.push(value.clone());
+                    }
+                    FlatField::Text { value } => {
+                        output.push(value.clone());
+                    }
+                }
+            }
+        }
+        writer.write_record(output)?;
+        Ok(())
     }
 }
