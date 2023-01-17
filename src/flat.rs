@@ -1,23 +1,23 @@
-// use crate::flatten::SUBJECT_ID;
+use crate::flatten::SUBJECT_ID;
 use csv::Writer;
 use indexmap::IndexMap;
 use std::error::Error;
 use std::fs::File;
 use std::path::Path;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum FlatField {
     Box_ {
-        left: f32,
-        top: f32,
-        right: f32,
-        bottom: f32,
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
     },
     Length {
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
     },
     List {
         values: Vec<String>,
@@ -27,8 +27,8 @@ pub enum FlatField {
         value: String,
     },
     Point {
-        x: f32,
-        y: f32,
+        x: i32,
+        y: i32,
     },
     Same {
         value: String,
@@ -41,22 +41,7 @@ pub enum FlatField {
     },
 }
 
-#[derive(Debug)]
-pub struct FlatRow {
-    pub row: IndexMap<String, FlatField>,
-}
-
-impl FlatRow {
-    pub fn new() -> Self {
-        FlatRow {
-            row: IndexMap::new(),
-        }
-    }
-
-    pub fn add_field(&mut self, column: &str, field: &FlatField) {
-        self.row.insert(column.to_owned(), field.clone());
-    }
-}
+pub type FlatRow = IndexMap<String, FlatField>;
 
 #[derive(Debug)]
 pub struct Flat {
@@ -77,12 +62,17 @@ impl Flat {
     }
 
     pub fn add_row(&mut self, row: FlatRow) {
-        for (column, field) in row.row.iter() {
+        for (column, field) in row.iter() {
             if !self.columns.contains_key(column) {
                 self.columns.insert(column.to_owned(), field.clone());
             }
         }
         self.rows.push(row);
+    }
+
+    pub fn sort(&mut self) {
+        self.rows
+            .sort_unstable_by_key(|row| row[SUBJECT_ID].clone());
     }
 
     pub fn write_csv(&self, csv_path: &Path) -> Result<(), Box<dyn Error>> {
@@ -103,48 +93,35 @@ impl Flat {
 
         for (column, field_type) in self.columns.iter() {
             match &field_type {
-                FlatField::Box_ {
-                    left: _,
-                    top: _,
-                    right: _,
-                    bottom: _,
-                } => {
+                FlatField::Box_ { .. } => {
                     output.push(format!("{}: left", column));
                     output.push(format!("{}: top", column));
                     output.push(format!("{}: right", column));
                     output.push(format!("{}: bottom", column));
                 }
-                FlatField::Length {
-                    x1: _,
-                    y1: _,
-                    x2: _,
-                    y2: _,
-                } => {
+                FlatField::Length { .. } => {
                     output.push(format!("{}: x1", column));
                     output.push(format!("{}: y1", column));
                     output.push(format!("{}: x2", column));
                     output.push(format!("{}: y2", column));
                 }
-                FlatField::List {
-                    values: _,
-                    value: _,
-                } => {
+                FlatField::List { .. } => {
                     output.push(column.to_string());
                 }
-                FlatField::NoOp { value: _ } => {
+                FlatField::NoOp { .. } => {
                     output.push(column.to_string());
                 }
-                FlatField::Point { x: _, y: _ } => {
+                FlatField::Point { .. } => {
                     output.push(format!("{}: x", column));
                     output.push(format!("{}: y", column));
                 }
-                FlatField::Same { value: _ } => {
+                FlatField::Same { .. } => {
                     output.push(column.to_string());
                 }
-                FlatField::Select { value: _ } => {
+                FlatField::Select { .. } => {
                     output.push(column.to_string());
                 }
-                FlatField::Text { value: _ } => {
+                FlatField::Text { .. } => {
                     output.push(column.to_string());
                 }
             }
@@ -157,10 +134,10 @@ impl Flat {
         let mut output: Vec<String> = Vec::new();
 
         for (header, _) in self.columns.iter() {
-            if !row.row.contains_key(header) {
+            if !row.contains_key(header) {
                 output.push("".to_string());
             } else {
-                let field: &FlatField = row.row.get(header).unwrap();
+                let field: &FlatField = row.get(header).unwrap();
                 match field {
                     FlatField::Box_ {
                         left,
@@ -168,16 +145,16 @@ impl Flat {
                         right,
                         bottom,
                     } => {
-                        output.push(format!("{}", left.round()));
-                        output.push(format!("{}", top.round()));
-                        output.push(format!("{}", right.round()));
-                        output.push(format!("{}", bottom.round()));
+                        output.push(format!("{}", left));
+                        output.push(format!("{}", top));
+                        output.push(format!("{}", right));
+                        output.push(format!("{}", bottom));
                     }
                     FlatField::Length { x1, y1, x2, y2 } => {
-                        output.push(format!("{}", x1.round()));
-                        output.push(format!("{}", y1.round()));
-                        output.push(format!("{}", x2.round()));
-                        output.push(format!("{}", y2.round()));
+                        output.push(format!("{}", x1));
+                        output.push(format!("{}", y1));
+                        output.push(format!("{}", x2));
+                        output.push(format!("{}", y2));
                     }
                     FlatField::List { values: _, value } => {
                         output.push(value.clone());
@@ -186,8 +163,8 @@ impl Flat {
                         output.push(value.clone());
                     }
                     FlatField::Point { x, y } => {
-                        output.push(format!("{}", x.round()));
-                        output.push(format!("{}", y.round()));
+                        output.push(format!("{}", x));
+                        output.push(format!("{}", y));
                     }
                     FlatField::Same { value } => {
                         output.push(value.clone());
