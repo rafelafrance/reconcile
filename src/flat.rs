@@ -61,13 +61,13 @@ impl Flat {
         }
     }
 
-    pub fn add_row(&mut self, row: FlatRow) {
+    pub fn add_row(&mut self, row: &FlatRow) {
         for (column, field) in row.iter() {
             if !self.columns.contains_key(column) {
                 self.columns.insert(column.to_owned(), field.clone());
             }
         }
-        self.rows.push(row);
+        self.rows.push(row.to_owned());
     }
 
     pub fn sort(&mut self) {
