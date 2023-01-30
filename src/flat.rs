@@ -1,8 +1,7 @@
-use crate::flatten::SUBJECT_ID;
+use crate::flatten;
 use csv::Writer;
 use indexmap::IndexMap;
 use std::error::Error;
-use std::fs::File;
 use std::path::Path;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -72,23 +71,39 @@ impl Flat {
 
     pub fn sort(&mut self) {
         self.rows
-            .sort_unstable_by_key(|row| row[SUBJECT_ID].clone());
+            .sort_unstable_by_key(|row| row[flatten::SUBJECT_ID].clone());
+    }
+
+    pub fn group(&self) -> IndexMap<String, Vec<FlatRow>> {
+        let mut grouped: IndexMap<String, Vec<FlatRow>> = IndexMap::new();
+        for row in &self.rows {
+            let key = match row.get(flatten::SUBJECT_ID).unwrap() {
+                FlatField::Same { value } => value,
+                _ => panic!("Missing key field."),
+            };
+            if !grouped.contains_key(key) {
+                grouped.insert(key.to_string(), Vec::new());
+            }
+        }
+        grouped
     }
 
     pub fn write_csv(&self, csv_path: &Path) -> Result<(), Box<dyn Error>> {
         let mut writer =
-            Writer::from_path(csv_path).expect("Could not open the unreconciled CSV file");
+            Writer::from_path(csv_path).expect("Could not write to the unreconciled CSV file");
 
-        _ = self.csv_header(&mut writer);
+        let mut output = self.csv_header();
+        writer.write_record(output)?;
 
         for row in self.rows.iter() {
-            _ = self.csv_row(row, &mut writer);
+            output = self.csv_row(row);
+            writer.write_record(output)?;
         }
 
         Ok(())
     }
 
-    fn csv_header(&self, writer: &mut Writer<File>) -> Result<(), Box<dyn Error>> {
+    fn csv_header(&self) -> Vec<String> {
         let mut output: Vec<String> = Vec::new();
 
         for (column, field_type) in self.columns.iter() {
@@ -126,11 +141,10 @@ impl Flat {
                 }
             }
         }
-        writer.write_record(output)?;
-        Ok(())
+        output
     }
 
-    fn csv_row(&self, row: &FlatRow, writer: &mut Writer<File>) -> Result<(), Box<dyn Error>> {
+    fn csv_row(&self, row: &FlatRow) -> Vec<String> {
         let mut output: Vec<String> = Vec::new();
 
         for (header, _) in self.columns.iter() {
@@ -178,7 +192,6 @@ impl Flat {
                 }
             }
         }
-        writer.write_record(output)?;
-        Ok(())
+        output
     }
 }

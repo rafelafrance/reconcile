@@ -1,7 +1,7 @@
 pub mod flat;
 pub mod flatten;
 pub mod reconcile;
-pub mod reconcile_fields;
+pub mod reconciled;
 
 use clap::Parser;
 use std::error::Error;
@@ -12,7 +12,7 @@ use std::path::PathBuf;
     about = "This takes raw Notes from Nature classifications and creates a \
             reconciliation of the classifications for a particular workflow. \
             That is, it reduces N classifications per subject to its \"best\" \
-            value."
+            value which may be calulated from the classifications."
 )]
 struct Cli {
     ///Read Zooniverse classifications from this CSV file
@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let args = Cli::parse();
 
-    let flat = flatten::flatten(&args.classifications_csv, &args.workflow_id).unwrap();
+    let flat = flatten::flatten(&args.classifications_csv, &args.workflow_id)?;
 
     if let Option::Some(flat_csv) = args.flattened_csv {
         _ = flat.write_csv(&flat_csv);

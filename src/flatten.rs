@@ -1,4 +1,4 @@
-use crate::flat::{Flat, FlatField, FlatRow};
+use crate::flat;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -65,37 +65,36 @@ struct TextField {
 pub fn flatten(
     classifications_csv: &PathBuf,
     workflow_id: &Option<String>,
-) -> Result<Flat, Box<dyn Error>> {
+) -> Result<flat::Flat, Box<dyn Error>> {
     let mut reader = csv::Reader::from_path(classifications_csv)
         .expect("Could not read the classifications CSV file");
 
-    let workflow_id = get_workflow_id(workflow_id, classifications_csv).unwrap();
-    let workflow_name = get_workflow_name(classifications_csv).unwrap();
+    let workflow_id = get_workflow_id(workflow_id, classifications_csv)?;
+    let workflow_name = get_workflow_name(classifications_csv)?;
 
-    let mut flat: Flat = Flat::new(&workflow_id, &workflow_name);
+    let mut flat = flat::Flat::new(&workflow_id, &workflow_name);
 
     for deserialized_row in reader.deserialize() {
-        let raw_row: HashMap<String, String> =
-            deserialized_row.expect("Could not parse a row in the classifications CSV file");
+        let raw_row: HashMap<String, String> = deserialized_row?;
 
-        let mut flat_row: FlatRow = FlatRow::new();
+        let mut flat_row = flat::FlatRow::new();
 
         flat_row.insert(
             SUBJECT_ID.to_string(),
-            FlatField::Same {
+            flat::FlatField::Same {
                 value: raw_row[SUBJECT_IDS].clone(),
             },
         );
 
-        let annotations: Value = serde_json::from_str(&raw_row[ANNOTATIONS])
-            .expect("Could not parse the annotations field");
+        let annotations: Value = serde_json::from_str(&raw_row[ANNOTATIONS])?;
 
-        if let Value::Array(tasks) = annotations {
-            for task in tasks {
-                flatten_tasks(&task, "", &mut flat_row);
+        match annotations {
+            Value::Array(tasks) => {
+                for task in tasks {
+                    flatten_tasks(&task, "", &mut flat_row);
+                }
             }
-        } else {
-            panic!("No annotations in this CSV row: {:?}", annotations)
+            _ => panic!("No annotations in this CSV row: {:?}", annotations),
         }
 
         let targets = [CLASSIFICATION_ID, USER_NAME, GOLD_STD, EXPERT, WORKFLOW_VER];
@@ -103,21 +102,20 @@ pub fn flatten(
             if raw_row.contains_key(target) {
                 flat_row.insert(
                     target.to_string(),
-                    FlatField::NoOp {
+                    flat::FlatField::NoOp {
                         value: raw_row[target].clone(),
                     },
                 );
             }
         }
 
-        let metadata: HashMap<String, Value> =
-            serde_json::from_str(&raw_row[METADATA]).expect("Could not parse the metadata field");
+        let metadata: HashMap<String, Value> = serde_json::from_str(&raw_row[METADATA])?;
 
         for target in [STARTED_AT, FINISHED_AT] {
             if metadata.contains_key(target) {
                 flat_row.insert(
                     target.to_string(),
-                    FlatField::NoOp {
+                    flat::FlatField::NoOp {
                         value: metadata[target].to_string().trim_matches('"').to_string(),
                     },
                 );
@@ -133,7 +131,7 @@ pub fn flatten(
                     if header != "retired" {
                         flat_row.insert(
                             header.to_string(),
-                            FlatField::Same {
+                            flat::FlatField::Same {
                                 value: value.to_string().trim_matches('"').to_string(),
                             },
                         );
@@ -147,13 +145,13 @@ pub fn flatten(
     Ok(flat)
 }
 
-fn flatten_tasks(task: &Value, task_id: &str, flat_row: &mut FlatRow) {
+fn flatten_tasks(task: &Value, task_id: &str, flat_row: &mut flat::FlatRow) {
     let task_id = get_task_id(task, &task_id);
 
     if let Value::Object(obj) = task {
         if obj.contains_key("value") && obj["value"].is_array() && obj["value"][0].is_string() {
             let mut field: ListField =
-                serde_json::from_value(task.clone()).expect("Could not parse a list field");
+                serde_json::from_value(task.clone()).expect("Invalid list field");
             field.values.sort();
             let joined = field
                 .values
@@ -164,7 +162,7 @@ fn flatten_tasks(task: &Value, task_id: &str, flat_row: &mut FlatRow) {
 
             flat_row.insert(
                 get_key(&field.task_label, task, &task_id),
-                FlatField::List {
+                flat::FlatField::List {
                     values: field.values,
                     value: joined,
                 },
@@ -182,7 +180,7 @@ fn flatten_tasks(task: &Value, task_id: &str, flat_row: &mut FlatRow) {
             }
         } else if obj.contains_key("select_label") {
             let field: SelectField =
-                serde_json::from_value(task.clone()).expect("Could not parse a select field");
+                serde_json::from_value(task.clone()).expect("Invalid select field");
 
             let value: String = match field.value {
                 Some(v) => v,
@@ -190,11 +188,11 @@ fn flatten_tasks(task: &Value, task_id: &str, flat_row: &mut FlatRow) {
             };
             flat_row.insert(
                 get_key(&field.select_label, task, &task_id),
-                FlatField::Select { value },
+                flat::FlatField::Select { value },
             );
         } else if obj.contains_key("task_label") {
             let field: TextField =
-                serde_json::from_value(task.clone()).expect("Could not parse a text field");
+                serde_json::from_value(task.clone()).expect("Invalid text field");
 
             let value: String = match field.value {
                 Some(v) => v,
@@ -202,15 +200,14 @@ fn flatten_tasks(task: &Value, task_id: &str, flat_row: &mut FlatRow) {
             };
             flat_row.insert(
                 get_key(&field.task_label, task, &task_id),
-                FlatField::Text { value },
+                flat::FlatField::Text { value },
             );
         } else if obj.contains_key("tool_label") && obj.contains_key("width") {
-            let field: BoxField =
-                serde_json::from_value(task.clone()).expect("Could not parse a box field");
+            let field: BoxField = serde_json::from_value(task.clone()).expect("Invalid box field");
 
             flat_row.insert(
                 get_key(&field.tool_label, task, &task_id),
-                FlatField::Box_ {
+                flat::FlatField::Box_ {
                     left: field.x.round() as i32,
                     top: field.y.round() as i32,
                     right: (field.x + field.width).round() as i32,
@@ -219,11 +216,11 @@ fn flatten_tasks(task: &Value, task_id: &str, flat_row: &mut FlatRow) {
             );
         } else if obj.contains_key("tool_label") && obj.contains_key("x1") {
             let field: LengthField =
-                serde_json::from_value(task.clone()).expect("Could not parse a length field");
+                serde_json::from_value(task.clone()).expect("Invalid length field");
 
             flat_row.insert(
                 get_key(&field.tool_label, task, &task_id),
-                FlatField::Length {
+                flat::FlatField::Length {
                     x1: field.x1.round() as i32,
                     y1: field.y1.round() as i32,
                     x2: field.x2.round() as i32,
@@ -232,11 +229,11 @@ fn flatten_tasks(task: &Value, task_id: &str, flat_row: &mut FlatRow) {
             );
         } else if obj.contains_key("tool_label") && obj.contains_key("x") {
             let field: PointField =
-                serde_json::from_value(task.clone()).expect("Could not parse a point field");
+                serde_json::from_value(task.clone()).expect("Invalid point field");
 
             flat_row.insert(
                 get_key(&field.tool_label, task, &task_id),
-                FlatField::Point {
+                flat::FlatField::Point {
                     x: field.x.round() as i32,
                     y: field.y.round() as i32,
                 },
